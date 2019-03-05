@@ -15,7 +15,7 @@ type DynanmicProps = {|
 |};
 
 export type HandleNewMeasurements = (
-  index: number,
+  key: number,
   newSize: number,
   isFirstMeasureAfterMounting: boolean
 ) => void;
@@ -29,9 +29,8 @@ type InstanceProps = {|
   instance: any,
   itemOffsetMap: { [index: number]: number },
   itemSizeMap: { [index: number]: number },
-  lastMeasuredIndex: number,
-  lastPositionedIndex: number,
   totalMeasuredSize: number,
+  oldDataIds: { [index: number]: number },
 |};
 
 const getItemMetadata = (
@@ -39,52 +38,46 @@ const getItemMetadata = (
   index: number,
   instanceProps: InstanceProps
 ): ItemMetadata => {
-  const {
-    estimatedItemSize,
-    instance,
-    itemOffsetMap,
-    itemSizeMap,
-    lastMeasuredIndex,
-    lastPositionedIndex,
-  } = instanceProps;
-
+  const { instance, itemOffsetMap, itemSizeMap } = instanceProps;
+  const { itemData } = instance.props;
   // If the specified item has not yet been measured,
   // Just return an estimated size for now.
-  if (index > lastMeasuredIndex) {
+  if (!itemSizeMap[itemData[index]]) {
     return {
       offset: 0,
-      size: estimatedItemSize,
+      size: 0,
     };
   }
 
-  // Lazily update positions if they are stale.
-  if (index > lastPositionedIndex) {
-    if (lastPositionedIndex < 0) {
-      itemOffsetMap[0] = 0;
-    }
-
-    for (let i = Math.max(1, lastPositionedIndex + 1); i <= index; i++) {
-      const prevOffset = itemOffsetMap[i - 1];
-
-      // In some browsers (e.g. Firefox) fast scrolling may skip rows.
-      // In this case, our assumptions about last measured indices may be incorrect.
-      // Handle this edge case to prevent NaN values from breaking styles.
-      // Slow scrolling back over these skipped rows will adjust their sizes.
-      const prevSize = itemSizeMap[i - 1] || 0;
-
-      itemOffsetMap[i] = prevOffset + prevSize;
-
-      // Reset cached style to clear stale position.
-      delete instance._itemStyleCache[i];
-    }
-
-    instanceProps.lastPositionedIndex = index;
-  }
-
-  let offset = itemOffsetMap[index];
-  let size = itemSizeMap[index];
+  let offset = itemOffsetMap[itemData[index]] || 0;
+  let size = itemSizeMap[itemData[index]] || 0;
 
   return { offset, size };
+};
+
+const generateOffsetMeasurements = (props, index, instanceProps) => {
+  const { instance, itemOffsetMap, itemSizeMap } = instanceProps;
+  const { itemData, itemCount } = instance.props;
+  instanceProps.totalMeasuredSize = itemSizeMap[itemData[0]] || 0;
+  if (index === 0) {
+    itemOffsetMap[itemData[0]] = 0;
+    delete instance._itemStyleCache[itemData[0]];
+  }
+
+  for (let i = 1; i <= itemCount; i++) {
+    const prevOffset = itemOffsetMap[itemData[i - 1]] || 0;
+
+    // In some browsers (e.g. Firefox) fast scrolling may skip rows.
+    // In this case, our assumptions about last measured indices may be incorrect.
+    // Handle this edge case to prevent NaN values from breaking styles.
+    // Slow scrolling back over these skipped rows will adjust their sizes.
+    const prevSize = itemSizeMap[itemData[i - 1]] || 0;
+
+    itemOffsetMap[itemData[i]] = prevOffset + prevSize;
+    instanceProps.totalMeasuredSize += itemSizeMap[itemData[i]] || 0;
+    // Reset cached style to clear stale position.
+    delete instance._itemStyleCache[itemData[i]];
+  }
 };
 
 const findNearestItemBinarySearch = (
@@ -94,19 +87,21 @@ const findNearestItemBinarySearch = (
   low: number,
   offset: number
 ): number => {
-  while (low <= high) {
+  while (low < high) {
+    const offsetNew = instanceProps.totalMeasuredSize - offset - props.height;
     const middle = low + Math.floor((high - low) / 2);
     const currentOffset = getItemMetadata(props, middle, instanceProps).offset;
 
-    if (currentOffset === offset) {
+    if (!currentOffset) {
+      return low;
+    } else if (currentOffset === offsetNew) {
       return middle;
-    } else if (currentOffset < offset) {
+    } else if (currentOffset < offsetNew) {
       low = middle + 1;
-    } else if (currentOffset > offset) {
+    } else if (currentOffset > offsetNew) {
       high = middle - 1;
     }
   }
-
   if (low > 0) {
     return low - 1;
   } else {
@@ -116,14 +111,8 @@ const findNearestItemBinarySearch = (
 
 const getEstimatedTotalSize = (
   { itemCount }: Props<any>,
-  {
-    itemSizeMap,
-    estimatedItemSize,
-    lastMeasuredIndex,
-    totalMeasuredSize,
-  }: InstanceProps
-) =>
-  totalMeasuredSize + (itemCount - lastMeasuredIndex - 1) * estimatedItemSize;
+  { itemSizeMap, estimatedItemSize, totalMeasuredSize }: InstanceProps
+) => totalMeasuredSize;
 
 const DynamicSizeList = createListComponent({
   getItemOffset: (
@@ -154,16 +143,6 @@ const DynamicSizeList = createListComponent({
   ): number => {
     const { direction, height, width } = props;
 
-    if (process.env.NODE_ENV !== 'production') {
-      const { lastMeasuredIndex } = instanceProps;
-      if (index > lastMeasuredIndex) {
-        console.warn(
-          `DynamicSizeList does not support scrolling to items that yave not yet measured. ` +
-            `scrollToItem() was called with index ${index} but the last measured item was ${lastMeasuredIndex}.`
-        );
-      }
-    }
-
     const size = (((direction === 'horizontal' ? width : height): any): number);
     const itemMetadata = getItemMetadata(props, index, instanceProps);
 
@@ -171,23 +150,26 @@ const DynamicSizeList = createListComponent({
     // To ensure it reflects actual measurements instead of just estimates.
     const estimatedTotalSize = getEstimatedTotalSize(props, instanceProps);
 
-    const maxOffset = Math.min(estimatedTotalSize - size, itemMetadata.offset);
+    const maxOffset = Math.max(
+      0,
+      estimatedTotalSize - (size + itemMetadata.offset)
+    );
     const minOffset = Math.max(
       0,
-      itemMetadata.offset - size + itemMetadata.size
+      estimatedTotalSize - itemMetadata.offset - (itemMetadata.size || 0)
     );
 
     switch (align) {
       case 'start':
-        return maxOffset;
-      case 'end':
         return minOffset;
+      case 'end':
+        return maxOffset;
       case 'center':
         return Math.round(minOffset + (maxOffset - minOffset) / 2);
       case 'auto':
       default:
         if (scrollOffset >= minOffset && scrollOffset <= maxOffset) {
-          return scrollOffset;
+          return estimatedTotalSize - (scrollOffset + height);
         } else if (scrollOffset - minOffset < maxOffset - scrollOffset) {
           return minOffset;
         } else {
@@ -201,7 +183,8 @@ const DynamicSizeList = createListComponent({
     offset: number,
     instanceProps: InstanceProps
   ): number => {
-    const { lastMeasuredIndex, totalMeasuredSize } = instanceProps;
+    const { totalMeasuredSize } = instanceProps;
+    const { itemCount } = props;
 
     // If we've already positioned and measured past this point,
     // Use a binary search to find the closets cell.
@@ -209,34 +192,33 @@ const DynamicSizeList = createListComponent({
       return findNearestItemBinarySearch(
         props,
         instanceProps,
-        lastMeasuredIndex,
+        itemCount,
         0,
         offset
       );
     }
 
-    // Otherwise render a new batch of items starting from where we left off.
-    return lastMeasuredIndex + 1;
+    // Otherwise render a new batch of items starting from where 0.
+    return 0;
   },
 
   getStopIndexForStartIndex: (
     props: Props<any>,
     startIndex: number,
     scrollOffset: number,
+    scrollHeight: number,
     instanceProps: InstanceProps
   ): number => {
-    const { direction, height, itemCount, width } = props;
+    const { itemCount } = props;
 
-    const size = (((direction === 'horizontal' ? width : height): any): number);
-    const itemMetadata = getItemMetadata(props, startIndex, instanceProps);
-    const maxOffset = scrollOffset + size;
-
-    let offset = itemMetadata.offset + itemMetadata.size;
     let stopIndex = startIndex;
-
-    while (stopIndex < itemCount - 1 && offset < maxOffset) {
+    const maxOffset = scrollHeight - scrollOffset;
+    const itemMetadata = getItemMetadata(props, stopIndex, instanceProps);
+    let offset = itemMetadata.offset + (itemMetadata.size || 0);
+    while (stopIndex <= itemCount && offset <= maxOffset) {
+      const itemMetadata = getItemMetadata(props, stopIndex, instanceProps);
+      offset = itemMetadata.offset + itemMetadata.size;
       stopIndex++;
-      offset += getItemMetadata(props, stopIndex, instanceProps).size;
     }
 
     return stopIndex;
@@ -250,167 +232,210 @@ const DynamicSizeList = createListComponent({
       instance,
       itemOffsetMap: {},
       itemSizeMap: {},
-      lastMeasuredIndex: -1,
-      lastPositionedIndex: -1,
       totalMeasuredSize: 0,
+      atBottom: true,
     };
 
-    let debounceForceUpdateID = null;
-    const debounceForceUpdate = () => {
-      if (debounceForceUpdateID === null) {
-        debounceForceUpdateID = setTimeout(() => {
-          debounceForceUpdateID = null;
-          instance.forceUpdate();
-        }, 1);
-      }
-    };
-
-    // This method is called before unmounting.
-    instance._unmountHook = () => {
-      if (debounceForceUpdateID !== null) {
-        clearTimeout(debounceForceUpdateID);
-        debounceForceUpdateID = null;
-      }
-    };
-
-    let hasNewMeasurements: boolean = false;
-    let sizeDeltaTotal = 0;
-
-    // This method is called after mount and update.
-    instance._commitHook = () => {
-      if (hasNewMeasurements) {
-        hasNewMeasurements = false;
-
-        // Edge case where cell sizes changed, but cancelled each other out.
-        // We still need to re-render in this case,
-        // Even though we don't need to adjust scroll offset.
-        if (sizeDeltaTotal === 0) {
-          instance.forceUpdate();
-          return;
-        }
-
-        let shouldForceUpdate;
-
-        // In the setState commit hook, we'll decrement sizeDeltaTotal.
-        // In case the state update is processed synchronously,
-        // And triggers additional size updates itself,
-        // We should only drecement by the amount we updated state for originally.
-        const sizeDeltaForStateUpdate = sizeDeltaTotal;
-
-        // If the user is scrolling up, we need to adjust the scroll offset,
-        // To prevent items from "jumping" as items before them have been resized.
-        instance.setState(
-          prevState => {
-            if (
-              prevState.scrollDirection === 'backward' &&
-              !prevState.scrollUpdateWasRequested
-            ) {
-              // TRICKY
-              // If item(s) have changed size since they were last displayed, content will appear to jump.
-              // To avoid this, we need to make small adjustments as a user scrolls to preserve apparent position.
-              // This also ensures that the first item eventually aligns with scroll offset 0.
-              return {
-                scrollOffset: prevState.scrollOffset + sizeDeltaForStateUpdate,
-              };
-            } else {
-              // There's no state to update,
-              // But we still want to re-render in this case.
-              shouldForceUpdate = true;
-
-              return null;
-            }
-          },
-          () => {
-            if (shouldForceUpdate) {
-              instance.forceUpdate();
-            } else {
-              const { scrollOffset } = instance.state;
-              const { direction } = instance.props;
-
-              // Adjusting scroll offset directly interrupts smooth scrolling for some browsers (e.g. Firefox).
-              // The relative scrollBy() method doesn't interrupt (or at least it won't as of Firefox v65).
-              // Other browsers (e.g. Chrome, Safari) seem to handle both adjustments equally well.
-              // See https://bugzilla.mozilla.org/show_bug.cgi?id=1502059
-              const element = ((instance._outerRef: any): HTMLDivElement);
-              // $FlowFixMe Property scrollBy is missing in HTMLDivElement
-              if (typeof element.scrollBy === 'function') {
-                element.scrollBy(
-                  direction === 'horizontal' ? sizeDeltaForStateUpdate : 0,
-                  direction === 'horizontal' ? 0 : sizeDeltaForStateUpdate
-                );
-              } else if (direction === 'horizontal') {
-                element.scrollLeft = scrollOffset;
-              } else {
-                element.scrollTop = scrollOffset;
-              }
-            }
-
-            sizeDeltaTotal -= sizeDeltaForStateUpdate;
-          }
-        );
-      }
-    };
-
-    // This function may be called out of order!
-    // It is not safe to reposition items here.
-    // Be careful when comparing index and lastMeasuredIndex.
+    let mountingCorrections = 0;
+    let unMountingCorrections = 0;
+    let correctedInstances = 0;
+    let correctionFrame;
     const handleNewMeasurements: HandleNewMeasurements = (
-      index: number,
+      key: number,
       newSize: number,
       isFirstMeasureAfterMounting: boolean
     ) => {
-      const {
-        itemSizeMap,
-        lastMeasuredIndex,
-        lastPositionedIndex,
-      } = instanceProps;
-
+      const { itemSizeMap } = instanceProps;
+      const { itemData } = instance.props;
+      let delta = 0;
+      const index = itemData.findIndex(item => item === key);
       // In some browsers (e.g. Firefox) fast scrolling may skip rows.
       // In this case, our assumptions about last measured indices may be incorrect.
       // Handle this edge case to prevent NaN values from breaking styles.
       // Slow scrolling back over these skipped rows will adjust their sizes.
-      const oldSize = itemSizeMap[index] || 0;
-
-      // Mark offsets after this as stale so that getItemMetadata() will lazily recalculate it.
-      if (index < lastPositionedIndex) {
-        instanceProps.lastPositionedIndex = index;
+      const oldSize = itemSizeMap[key] || 0;
+      if (oldSize === newSize && index !== 0) {
+        return;
       }
 
-      if (index <= lastMeasuredIndex) {
-        if (oldSize === newSize) {
+      const [, , , visibleStopIndex] = instance._getRangeToRender();
+
+      delta += newSize - oldSize;
+      itemSizeMap[key] = newSize;
+
+      if (!instance.state.scrolledToInitIndex) {
+        generateOffsetMeasurements(props, index, instanceProps);
+        instance.forceUpdate();
+        return;
+      }
+
+      if (
+        instance.state.scrollOffset + instance.props.height >=
+        instanceProps.totalMeasuredSize - 10
+      ) {
+        generateOffsetMeasurements(props, index, instanceProps);
+        instance.scrollToItem(0, 'end');
+        return;
+      }
+
+      generateOffsetMeasurements(props, index, instanceProps);
+
+      if (index < visibleStopIndex - 1) {
+        instance.forceUpdate();
+        return;
+      }
+
+      instance._scrollCorrectionInProgress = true;
+
+      instance.setState(
+        prevState => {
+          let deltaValue;
+          if (mountingCorrections === 0 && unMountingCorrections === 0) {
+            deltaValue = delta;
+          } else {
+            deltaValue = prevState.scrollDelta + delta;
+          }
+          mountingCorrections++;
+          const newOffset = prevState.scrollOffset + delta;
+          return {
+            scrollOffset: newOffset,
+            scrollDelta: deltaValue,
+          };
+        },
+        () => {
+          // $FlowFixMe Property scrollBy is missing in HTMLDivElement
+          correctedInstances++;
+          if (mountingCorrections === correctedInstances) {
+            if (mountingCorrections === 1) {
+              correctScroll();
+            } else {
+              if (correctionFrame) {
+                window.cancelAnimationFrame(correctionFrame);
+              }
+              correctionFrame = window.requestAnimationFrame(correctScroll);
+            }
+          }
+        }
+      );
+    };
+
+    const correctScroll = () => {
+      const { scrollOffset, scrollDelta } = instance.state;
+      const { direction } = instance.props;
+      const element = ((instance._outerRef: any): HTMLDivElement);
+      if (element) {
+        if (typeof element.scrollBy === 'function') {
+          if (scrollDelta !== 0) {
+            const x = direction === 'horizontal' ? scrollDelta : 0;
+            const y = direction === 'horizontal' ? 0 : scrollDelta;
+            element.scrollBy(x, y);
+          }
+        } else if (direction === 'horizontal') {
+          element.scrollLeft = scrollOffset;
+        } else {
+          element.scrollTop = scrollOffset;
+        }
+        instance._scrollCorrectionInProgress = false;
+        correctedInstances = 0;
+        mountingCorrections = 0;
+      }
+    };
+
+    instance._dataChange = () => {
+      if (instanceProps.totalMeasuredSize < instance.props.height) {
+        instance.props.canLoadMorePosts();
+      }
+    };
+
+    instance._heightChange = (prevHeight, prevOffset) => {
+      if (prevOffset + prevHeight >= instanceProps.totalMeasuredSize - 10) {
+        instance.scrollToItem(0, 'end');
+        return;
+      }
+    };
+
+    instance._commitHook = () => {
+      if (
+        !instance.state.scrolledToInitIndex &&
+        Object.keys(instanceProps.itemOffsetMap).length
+      ) {
+        const { index, position } = instance.props.initScrollToIndex();
+        instance.scrollToItem(index, position);
+        instance.setState({
+          scrolledToInitIndex: true,
+        });
+      }
+    };
+
+    instance._handleNewMeasurements = handleNewMeasurements;
+
+    const onItemRowUnmount = (itemId, index) => {
+      const { props } = instance;
+      if (props.itemData[index] === itemId) {
+        return;
+      }
+      const doesItemExist = props.itemData.includes(itemId);
+      if (!doesItemExist) {
+        let delta = instanceProps.itemSizeMap[itemId];
+        delete instanceProps.itemSizeMap[itemId];
+        delete instanceProps.itemOffsetMap[itemId];
+        const [, , , visibleStopIndex] = instance._getRangeToRender();
+
+        if (
+          instance.state.scrollOffset + instance.props.height >=
+          instanceProps.totalMeasuredSize - 10
+        ) {
+          generateOffsetMeasurements(props, index, instanceProps);
+          instance.scrollToItem(0, 'end');
+          instance.forceUpdate();
+          return;
+        }
+        generateOffsetMeasurements(props, index, instanceProps);
+
+        if (index < visibleStopIndex) {
+          instance.forceUpdate();
           return;
         }
 
-        // Adjust total size estimate by the delta in size.
-        instanceProps.totalMeasuredSize += newSize - oldSize;
-
-        // Record the size delta here in case the user is scrolling up.
-        // In that event, we need to adjust the scroll offset by thie amount,
-        // To prevent items from "jumping" as items before them are resized.
-        // We only do this for items that are newly measured (after mounting).
-        // Ones that change size later do not need to affect scroll offset.
-        if (isFirstMeasureAfterMounting) {
-          sizeDeltaTotal += newSize - oldSize;
-        }
-      } else {
-        instanceProps.lastMeasuredIndex = index;
-        instanceProps.totalMeasuredSize += newSize;
-      }
-
-      itemSizeMap[index] = newSize;
-
-      // Even though the size has changed, we don't need to reset the cached style,
-      // Because dynamic list items don't have constrained sizes.
-      // This enables them to resize when their content (or container size) changes.
-      // It also lets us avoid an unnecessary render in this case.
-
-      if (isFirstMeasureAfterMounting) {
-        hasNewMeasurements = true;
-      } else {
-        debounceForceUpdate();
+        instance.setState(
+          prevState => {
+            let DeltaValue = 0;
+            if (unMountingCorrections === 0 && mountingCorrections === 0) {
+              DeltaValue = -delta;
+            } else {
+              DeltaValue = prevState.scrollDelta - delta;
+            }
+            const newOffset = prevState.scrollOffset + DeltaValue;
+            unMountingCorrections++;
+            return {
+              scrollOffset: newOffset,
+              scrollDelta: DeltaValue,
+            };
+          },
+          () => {
+            if (mountingCorrections === 0) {
+              const { scrollOffset, scrollDelta } = instance.state;
+              const { direction } = instance.props;
+              const element = ((instance._outerRef: any): HTMLDivElement);
+              if (element) {
+                if (typeof element.scrollBy === 'function') {
+                  if (scrollDelta !== 0) {
+                    const x = direction === 'horizontal' ? scrollDelta : 0;
+                    const y = direction === 'horizontal' ? 0 : scrollDelta;
+                    element.scrollBy(x, y);
+                  }
+                } else if (direction === 'horizontal') {
+                  element.scrollLeft = scrollOffset;
+                } else {
+                  element.scrollTop = scrollOffset;
+                }
+              }
+            }
+            unMountingCorrections--;
+          }
+        );
       }
     };
-    instance._handleNewMeasurements = handleNewMeasurements;
 
     // Override the item-rendering process to wrap items with ItemMeasurer.
     // This keep the external API simpler.
@@ -426,7 +451,6 @@ const DynamicSizeList = createListComponent({
       const { isScrolling } = instance.state;
 
       const [startIndex, stopIndex] = instance._getRangeToRender();
-
       const items = [];
       if (itemCount > 0) {
         for (let index = startIndex; index <= stopIndex; index++) {
@@ -442,7 +466,7 @@ const DynamicSizeList = createListComponent({
 
           const item = createElement(children, {
             data: itemData,
-            index,
+            itemId: itemData[index],
             isScrolling: useIsScrolling ? isScrolling : undefined,
             style,
           });
@@ -456,13 +480,14 @@ const DynamicSizeList = createListComponent({
               item,
               key: itemKey(index),
               size,
+              itemId: itemKey(index),
+              onUnmount: onItemRowUnmount,
             })
           );
         }
       }
       return items;
     };
-
     return instanceProps;
   },
 

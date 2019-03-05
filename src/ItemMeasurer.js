@@ -65,8 +65,12 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
   }
 
   componentWillUnmount() {
+    const { onUnmount, itemId, index } = this.props;
     if (this._resizeObserver !== null) {
       this._resizeObserver.disconnect();
+    }
+    if (onUnmount) {
+      onUnmount(itemId, index);
     }
   }
 
@@ -78,8 +82,8 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
     const {
       direction,
       handleNewMeasurements,
-      index,
       size: oldSize,
+      itemId,
     } = this.props;
 
     const node = this._node;
@@ -96,7 +100,7 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
           : Math.ceil(node.offsetHeight);
 
       if (oldSize !== newSize) {
-        handleNewMeasurements(index, newSize, isCommitPhase);
+        handleNewMeasurements(itemId, newSize, isCommitPhase);
       }
     }
   };

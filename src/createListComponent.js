@@ -60,6 +60,7 @@ type State = {|
   scrollDirection: ScrollDirection,
   scrollOffset: number,
   scrollUpdateWasRequested: boolean,
+  scrolledToInitIndex: boolean,
 |};
 
 type GetItemOffset = (
@@ -96,7 +97,9 @@ type ValidateProps = (props: Props<any>) => void;
 
 const IS_SCROLLING_DEBOUNCE_INTERVAL = 150;
 
-export const defaultItemKey = (index: number, data: any) => index;
+export const defaultItemKey = (index: number, data: any) => {
+  return index;
+};
 
 export default function createListComponent({
   getItemOffset,
@@ -123,6 +126,8 @@ export default function createListComponent({
     _instanceProps: any = initInstanceProps(this.props, this);
     _outerRef: ?HTMLDivElement;
     _resetIsScrollingTimeoutId: TimeoutID | null = null;
+    _scrollCorrectionInProgress = false;
+    _atBottom = true;
 
     static defaultProps = {
       direction: 'vertical',
@@ -135,12 +140,13 @@ export default function createListComponent({
 
     state: State = {
       isScrolling: false,
-      scrollDirection: 'forward',
+      scrollDirection: 'backward',
       scrollOffset:
         typeof this.props.initialScrollOffset === 'number'
           ? this.props.initialScrollOffset
           : 0,
       scrollUpdateWasRequested: false,
+      scrollDelta: 0,
     };
 
     // Always use explicit constructor for React components.
@@ -163,7 +169,7 @@ export default function createListComponent({
       this.setState(
         prevState => ({
           scrollDirection:
-            prevState.scrollOffset < scrollOffset ? 'forward' : 'backward',
+            prevState.scrollOffset >= scrollOffset ? 'backward' : 'forward',
           scrollOffset: scrollOffset,
           scrollUpdateWasRequested: true,
         }),
@@ -196,25 +202,37 @@ export default function createListComponent({
         }
       }
 
-      this._callPropsCallbacks();
       this._commitHook();
     }
 
-    componentDidUpdate() {
+    componentDidUpdate(prevProps, prevState) {
       const { direction } = this.props;
       const { scrollOffset, scrollUpdateWasRequested } = this.state;
+      const element = ((this._outerRef: any): HTMLDivElement);
 
       if (scrollUpdateWasRequested && this._outerRef !== null) {
-        const element = ((this._outerRef: any): HTMLDivElement);
         if (direction === 'horizontal') {
           element.scrollLeft = scrollOffset;
         } else {
           element.scrollTop = scrollOffset;
         }
       }
+      if (this.state.scrolledToInitIndex) {
+        this._callPropsCallbacks();
+      }
 
-      this._callPropsCallbacks();
       this._commitHook();
+      if (prevProps.itemData !== this.props.itemData) {
+        this._dataChange();
+      }
+
+      if (prevProps.height !== this.props.height) {
+        this._heightChange(prevProps.height, prevState.scrollOffset);
+      }
+
+      if (prevState.scrolledToInitIndex !== this.state.scrolledToInitIndex) {
+        this._dataChange(); // though this is not data change we are checking for first load change
+      }
     }
 
     componentWillUnmount() {
@@ -262,7 +280,6 @@ export default function createListComponent({
             height,
             width,
             overflow: 'auto',
-            position: 'relative',
             WebkitOverflowScrolling: 'touch',
             willChange: 'transform',
             ...style,
@@ -275,6 +292,8 @@ export default function createListComponent({
             height: direction === 'horizontal' ? '100%' : estimatedTotalSize,
             pointerEvents: isScrolling ? 'none' : '',
             width: direction === 'horizontal' ? estimatedTotalSize : '100%',
+            position: 'relative',
+            minHeight: '100%',
           },
         })
       );
@@ -360,29 +379,33 @@ export default function createListComponent({
     // List implementations can override this method to be notified.
     _unmountHook() {}
 
+    // This method is called when data changes
+    // List implementations can override this method to be notified.
+    _dataChange() {}
+
     // Lazily create and cache item styles while scrolling,
     // So that pure component sCU will prevent re-renders.
     // We maintain this cache, and pass a style prop rather than index,
     // So that List can clear cached styles and force item re-render if necessary.
     _getItemStyle: (index: number) => Object;
     _getItemStyle = (index: number): Object => {
-      const { direction, itemSize } = this.props;
+      const { direction, itemSize, itemData } = this.props;
 
       const itemStyleCache = this._getItemStyleCache(
         shouldResetStyleCacheOnItemSizeChange && itemSize
       );
 
       let style;
-      if (itemStyleCache.hasOwnProperty(index)) {
-        style = itemStyleCache[index];
+      if (itemStyleCache.hasOwnProperty(itemData[index])) {
+        style = itemStyleCache[itemData[index]];
       } else {
-        itemStyleCache[index] = style = {
+        itemStyleCache[itemData[index]] = style = {
           position: 'absolute',
           left:
             direction === 'horizontal'
               ? getItemOffset(this.props, index, this._instanceProps)
               : 0,
-          top:
+          bottom:
             direction === 'vertical'
               ? getItemOffset(this.props, index, this._instanceProps)
               : 0,
@@ -414,7 +437,7 @@ export default function createListComponent({
 
     _getRangeToRender(): [number, number, number, number] {
       const { itemCount, overscanCount } = this.props;
-      const { scrollDirection, scrollOffset } = this.state;
+      const { scrollDirection, scrollOffset, scrollHeight } = this.state;
 
       if (itemCount === 0) {
         return [0, 0, 0, 0];
@@ -429,22 +452,27 @@ export default function createListComponent({
         this.props,
         startIndex,
         scrollOffset,
+        scrollHeight,
         this._instanceProps
       );
 
       // Overscan by one item in each direction so that tab/focus works.
       // If there isn't at least one extra item, tab loops back around.
       const overscanBackward =
-        scrollDirection === 'backward' ? Math.max(1, overscanCount) : 1;
+        scrollDirection === 'forward' ? 50 : Math.max(1, overscanCount);
       const overscanForward =
-        scrollDirection === 'forward' ? Math.max(1, overscanCount) : 1;
+        scrollDirection === 'backward' ? 50 : Math.max(1, overscanCount);
 
-      return [
-        Math.max(0, startIndex - overscanBackward),
-        Math.max(0, Math.min(itemCount - 1, stopIndex + overscanForward)),
-        startIndex,
-        stopIndex,
-      ];
+      const minValue = Math.max(0, startIndex - overscanForward);
+      const maxValue = Math.max(
+        0,
+        Math.min(itemCount - 1, stopIndex + overscanBackward)
+      );
+
+      if (maxValue < 100 && maxValue < itemCount) {
+        return [minValue, Math.min(99, itemCount - 1), startIndex, stopIndex];
+      }
+      return [minValue, maxValue, startIndex, stopIndex];
     }
 
     _renderItems() {
@@ -497,7 +525,18 @@ export default function createListComponent({
     };
 
     _onScrollVertical = (event: ScrollEvent): void => {
-      const { scrollTop } = event.currentTarget;
+      if (!this.state.scrolledToInitIndex) {
+        return;
+      }
+      const { scrollTop, scrollHeight } = event.currentTarget;
+      if (this._scrollCorrectionInProgress) {
+        if (this.state.scrollUpdateWasRequested) {
+          this.setState(() => ({
+            scrollUpdateWasRequested: false,
+          }));
+        }
+        return;
+      }
       this.setState(prevState => {
         if (prevState.scrollOffset === scrollTop) {
           // Scroll position may have been updated by cDM/cDU,
@@ -512,6 +551,9 @@ export default function createListComponent({
             prevState.scrollOffset < scrollTop ? 'forward' : 'backward',
           scrollOffset: scrollTop,
           scrollUpdateWasRequested: false,
+          scrollHeight,
+          scrollTop,
+          scrollDelta: 0,
         };
       }, this._resetIsScrollingDebounced);
     };
