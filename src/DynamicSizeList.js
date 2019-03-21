@@ -280,7 +280,7 @@ const DynamicSizeList = createListComponent({
 
       generateOffsetMeasurements(props, index, instanceProps);
 
-      if (index < visibleStopIndex - 1) {
+      if (index <= visibleStopIndex) {
         instance.forceUpdate();
         return;
       }
@@ -392,7 +392,7 @@ const DynamicSizeList = createListComponent({
         }
         generateOffsetMeasurements(props, index, instanceProps);
 
-        if (index < visibleStopIndex) {
+        if (index <= visibleStopIndex) {
           instance.forceUpdate();
           return;
         }
