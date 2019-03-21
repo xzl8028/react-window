@@ -254,11 +254,9 @@ const DynamicSizeList = createListComponent({
       // Handle this edge case to prevent NaN values from breaking styles.
       // Slow scrolling back over these skipped rows will adjust their sizes.
       const oldSize = itemSizeMap[key] || 0;
-      if (oldSize === newSize && index !== 0) {
+      if (oldSize === newSize) {
         return;
       }
-
-      const [, , , visibleStopIndex] = instance._getRangeToRender();
 
       delta += newSize - oldSize;
       itemSizeMap[key] = newSize;
@@ -279,6 +277,12 @@ const DynamicSizeList = createListComponent({
       }
 
       generateOffsetMeasurements(props, index, instanceProps);
+
+      const element = ((instance._outerRef: any): HTMLDivElement);
+
+      const [, , , visibleStopIndex] = instance._getRangeToRender(
+        element.scrollTop
+      );
 
       if (index <= visibleStopIndex) {
         instance.forceUpdate();
@@ -379,7 +383,11 @@ const DynamicSizeList = createListComponent({
         let delta = instanceProps.itemSizeMap[itemId];
         delete instanceProps.itemSizeMap[itemId];
         delete instanceProps.itemOffsetMap[itemId];
-        const [, , , visibleStopIndex] = instance._getRangeToRender();
+        const element = ((instance._outerRef: any): HTMLDivElement);
+
+        const [, , , visibleStopIndex] = instance._getRangeToRender(
+          element.scrollTop
+        );
 
         if (
           instance.state.scrollOffset + instance.props.height >=

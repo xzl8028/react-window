@@ -435,7 +435,7 @@ export default function createListComponent({
       return this._itemStyleCache;
     });
 
-    _getRangeToRender(): [number, number, number, number] {
+    _getRangeToRender(scrollTop): [number, number, number, number] {
       const { itemCount, overscanCount } = this.props;
       const { scrollDirection, scrollOffset, scrollHeight } = this.state;
 
@@ -445,13 +445,13 @@ export default function createListComponent({
 
       const startIndex = getStartIndexForOffset(
         this.props,
-        scrollOffset,
+        scrollTop || scrollOffset,
         this._instanceProps
       );
       const stopIndex = getStopIndexForStartIndex(
         this.props,
         startIndex,
-        scrollOffset,
+        scrollTop || scrollOffset,
         scrollHeight,
         this._instanceProps
       );

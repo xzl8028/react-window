@@ -369,7 +369,7 @@ function createListComponent(_ref) {
     // So that List can clear cached styles and force item re-render if necessary.
     ;
 
-    _proto._getRangeToRender = function _getRangeToRender() {
+    _proto._getRangeToRender = function _getRangeToRender(scrollTop) {
       var _this$props4 = this.props,
           itemCount = _this$props4.itemCount,
           overscanCount = _this$props4.overscanCount;
@@ -382,8 +382,8 @@ function createListComponent(_ref) {
         return [0, 0, 0, 0];
       }
 
-      var startIndex = getStartIndexForOffset(this.props, scrollOffset, this._instanceProps);
-      var stopIndex = getStopIndexForStartIndex(this.props, startIndex, scrollOffset, scrollHeight, this._instanceProps); // Overscan by one item in each direction so that tab/focus works.
+      var startIndex = getStartIndexForOffset(this.props, scrollTop || scrollOffset, this._instanceProps);
+      var stopIndex = getStopIndexForStartIndex(this.props, startIndex, scrollTop || scrollOffset, scrollHeight, this._instanceProps); // Overscan by one item in each direction so that tab/focus works.
       // If there isn't at least one extra item, tab loops back around.
 
       var overscanBackward = scrollDirection === 'forward' ? 50 : Math.max(1, overscanCount);
@@ -735,12 +735,9 @@ createListComponent({
 
       var oldSize = itemSizeMap[key] || 0;
 
-      if (oldSize === newSize && index !== 0) {
+      if (oldSize === newSize) {
         return;
       }
-
-      var _instance$_getRangeTo = instance._getRangeToRender(),
-          visibleStopIndex = _instance$_getRangeTo[3];
 
       delta += newSize - oldSize;
       itemSizeMap[key] = newSize;
@@ -758,6 +755,10 @@ createListComponent({
       }
 
       generateOffsetMeasurements(props, index, instanceProps);
+      var element = instance._outerRef;
+
+      var _instance$_getRangeTo = instance._getRangeToRender(element.scrollTop),
+          visibleStopIndex = _instance$_getRangeTo[3];
 
       if (index <= visibleStopIndex) {
         instance.forceUpdate();
@@ -865,8 +866,9 @@ createListComponent({
         var delta = instanceProps.itemSizeMap[itemId];
         delete instanceProps.itemSizeMap[itemId];
         delete instanceProps.itemOffsetMap[itemId];
+        var element = instance._outerRef;
 
-        var _instance$_getRangeTo2 = instance._getRangeToRender(),
+        var _instance$_getRangeTo2 = instance._getRangeToRender(element.scrollTop),
             visibleStopIndex = _instance$_getRangeTo2[3];
 
         if (instance.state.scrollOffset + instance.props.height >= instanceProps.totalMeasuredSize - 10) {
@@ -904,19 +906,20 @@ createListComponent({
                 scrollOffset = _instance$state2.scrollOffset,
                 scrollDelta = _instance$state2.scrollDelta;
             var direction = instance.props.direction;
-            var element = instance._outerRef;
+            var _element = instance._outerRef;
 
-            if (element) {
-              if (typeof element.scrollBy === 'function') {
+            if (_element) {
+              if (typeof _element.scrollBy === 'function') {
                 if (scrollDelta !== 0) {
                   var x = direction === 'horizontal' ? scrollDelta : 0;
                   var y = direction === 'horizontal' ? 0 : scrollDelta;
-                  element.scrollBy(x, y);
+
+                  _element.scrollBy(x, y);
                 }
               } else if (direction === 'horizontal') {
-                element.scrollLeft = scrollOffset;
+                _element.scrollLeft = scrollOffset;
               } else {
-                element.scrollTop = scrollOffset;
+                _element.scrollTop = scrollOffset;
               }
             }
           }
