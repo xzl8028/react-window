@@ -5,6 +5,34 @@ import memoizeOne from 'memoize-one';
 import { createElement, PureComponent, Component } from 'react';
 import { findDOMNode } from 'react-dom';
 
+// Animation frame based implementation of setTimeout.
+// Inspired by Joe Lambert, https://gist.github.com/joelambert/1002116#file-requesttimeout-js
+var hasNativePerformanceNow = typeof performance === 'object' && typeof performance.now === 'function';
+var now = hasNativePerformanceNow ? function () {
+  return performance.now();
+} : function () {
+  return Date.now();
+};
+function cancelTimeout(timeoutID) {
+  cancelAnimationFrame(timeoutID.id);
+}
+function requestTimeout(callback, delay) {
+  var start = now();
+
+  function tick() {
+    if (now() - start >= delay) {
+      callback.call(null);
+    } else {
+      timeoutID.id = requestAnimationFrame(tick);
+    }
+  }
+
+  var timeoutID = {
+    id: requestAnimationFrame(tick)
+  };
+  return timeoutID;
+}
+
 var IS_SCROLLING_DEBOUNCE_INTERVAL = 150;
 var defaultItemKey = function defaultItemKey(index, data) {
   return index;
@@ -43,7 +71,8 @@ function createListComponent(_ref) {
         scrollDirection: 'backward',
         scrollOffset: typeof _this.props.initialScrollOffset === 'number' ? _this.props.initialScrollOffset : 0,
         scrollUpdateWasRequested: false,
-        scrollDelta: 0
+        scrollDelta: 0,
+        scrollHeight: 0
       };
       _this._callOnItemsRendered = void 0;
       _this._callOnItemsRendered = memoizeOne(function (overscanStartIndex, overscanStopIndex, visibleStartIndex, visibleStopIndex) {
@@ -137,6 +166,12 @@ function createListComponent(_ref) {
           return;
         }
 
+        if (_this.state.scrollHeight !== 0 && scrollHeight !== _this.state.scrollHeight) {
+          _this.setState({
+            scrollHeight: scrollHeight
+          });
+        }
+
         _this.setState(function (prevState) {
           if (prevState.scrollOffset === scrollTop) {
             // Scroll position may have been updated by cDM/cDU,
@@ -170,10 +205,10 @@ function createListComponent(_ref) {
 
       _this._resetIsScrollingDebounced = function () {
         if (_this._resetIsScrollingTimeoutId !== null) {
-          clearTimeout(_this._resetIsScrollingTimeoutId);
+          cancelTimeout(_this._resetIsScrollingTimeoutId);
         }
 
-        _this._resetIsScrollingTimeoutId = setTimeout(_this._resetIsScrolling, IS_SCROLLING_DEBOUNCE_INTERVAL);
+        _this._resetIsScrollingTimeoutId = requestTimeout(_this._resetIsScrolling, IS_SCROLLING_DEBOUNCE_INTERVAL);
       };
 
       _this._resetIsScrolling = function () {
@@ -274,7 +309,7 @@ function createListComponent(_ref) {
 
     _proto.componentWillUnmount = function componentWillUnmount() {
       if (this._resetIsScrollingTimeoutId !== null) {
-        clearTimeout(this._resetIsScrollingTimeoutId);
+        cancelTimeout(this._resetIsScrollingTimeoutId);
       }
 
       this._unmountHook();
@@ -363,21 +398,21 @@ function createListComponent(_ref) {
     // So that List can clear cached styles and force item re-render if necessary.
     ;
 
-    _proto._getRangeToRender = function _getRangeToRender(scrollTop) {
+    _proto._getRangeToRender = function _getRangeToRender(scrollTop, scrollHeight) {
       var _this$props4 = this.props,
           itemCount = _this$props4.itemCount,
           overscanCount = _this$props4.overscanCount;
       var _this$state3 = this.state,
           scrollDirection = _this$state3.scrollDirection,
-          scrollOffset = _this$state3.scrollOffset,
-          scrollHeight = _this$state3.scrollHeight;
+          scrollOffset = _this$state3.scrollOffset;
 
       if (itemCount === 0) {
         return [0, 0, 0, 0];
       }
 
-      var startIndex = getStartIndexForOffset(this.props, scrollTop || scrollOffset, this._instanceProps);
-      var stopIndex = getStopIndexForStartIndex(this.props, startIndex, scrollTop || scrollOffset, scrollHeight, this._instanceProps); // Overscan by one item in each direction so that tab/focus works.
+      var scrollOffsetValue = scrollTop >= 0 ? scrollTop : scrollOffset;
+      var startIndex = getStartIndexForOffset(this.props, scrollOffsetValue, this._instanceProps);
+      var stopIndex = getStopIndexForStartIndex(this.props, startIndex, scrollOffsetValue, this._instanceProps); // Overscan by one item in each direction so that tab/focus works.
       // If there isn't at least one extra item, tab loops back around.
 
       var overscanBackward = scrollDirection === 'forward' ? 50 : Math.max(1, overscanCount);
@@ -510,12 +545,18 @@ function (_Component) {
 
     this._measureItem(true);
 
-    if (typeof ResizeObserver !== 'undefined') {
-      // Watch for resizes due to changed content,
-      // Or changes in the size of the parent container.
-      this._resizeObserver = new ResizeObserver(this._onResize);
+    this._resizeObserver = new MutationObserver(this._onResize);
 
-      this._resizeObserver.observe(node);
+    this._resizeObserver.observe(node, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
+  };
+
+  _proto.componentDidUpdate = function componentDidUpdate(prevProps) {
+    if (prevProps.width !== this.props.width) {
+      this._onResize();
     }
   };
 
@@ -579,7 +620,7 @@ var generateOffsetMeasurements = function generateOffsetMeasurements(props, inde
     delete instance._itemStyleCache[itemData[0]];
   }
 
-  for (var i = 1; i <= itemCount; i++) {
+  for (var i = 1; i < itemCount; i++) {
     var prevOffset = itemOffsetMap[itemData[i - 1]] || 0; // In some browsers (e.g. Firefox) fast scrolling may skip rows.
     // In this case, our assumptions about last measured indices may be incorrect.
     // Handle this edge case to prevent NaN values from breaking styles.
@@ -684,18 +725,32 @@ createListComponent({
 
     return 0;
   },
-  getStopIndexForStartIndex: function getStopIndexForStartIndex(props, startIndex, scrollOffset, scrollHeight, instanceProps) {
+  getStopIndexForStartIndex: function getStopIndexForStartIndex(props, startIndex, scrollOffset, instanceProps) {
     var itemCount = props.itemCount;
     var stopIndex = startIndex;
-    var maxOffset = scrollHeight - scrollOffset;
+    var maxOffset = instanceProps.totalMeasuredSize - scrollOffset;
     var itemMetadata = getItemMetadata(props, stopIndex, instanceProps);
     var offset = itemMetadata.offset + (itemMetadata.size || 0);
+    var closestOffsetIndex = 0;
+    var previousOffset = 0;
 
-    while (stopIndex <= itemCount && offset <= maxOffset) {
+    while (stopIndex < itemCount && offset <= maxOffset) {
       var _itemMetadata = getItemMetadata(props, stopIndex, instanceProps);
 
       offset = _itemMetadata.offset + _itemMetadata.size;
+
+      if (offset > previousOffset) {
+        closestOffsetIndex = stopIndex;
+      } else if (_itemMetadata.offset === 0 && stopIndex !== 0) {
+        return --stopIndex;
+      }
+
+      previousOffset = offset;
       stopIndex++;
+    }
+
+    if (stopIndex >= itemCount) {
+      return closestOffsetIndex;
     }
 
     return stopIndex;
@@ -742,19 +797,20 @@ createListComponent({
         return;
       }
 
+      var element = instance._outerRef;
+
       if (instance.state.scrollOffset + instance.props.height >= instanceProps.totalMeasuredSize - 10) {
         generateOffsetMeasurements(props, index, instanceProps);
         instance.scrollToItem(0, 'end');
         return;
       }
 
-      generateOffsetMeasurements(props, index, instanceProps);
-      var element = instance._outerRef;
-
       var _instance$_getRangeTo = instance._getRangeToRender(element.scrollTop),
           visibleStopIndex = _instance$_getRangeTo[3];
 
-      if (index <= visibleStopIndex) {
+      generateOffsetMeasurements(props, index, instanceProps);
+
+      if (index < visibleStopIndex - 1) {
         instance.forceUpdate();
         return;
       }
@@ -874,7 +930,7 @@ createListComponent({
 
         generateOffsetMeasurements(props, index, instanceProps);
 
-        if (index <= visibleStopIndex) {
+        if (index < visibleStopIndex) {
           instance.forceUpdate();
           return;
         }
@@ -933,7 +989,8 @@ createListComponent({
           itemData = _instance$props2.itemData,
           _instance$props2$item = _instance$props2.itemKey,
           itemKey = _instance$props2$item === void 0 ? defaultItemKey : _instance$props2$item,
-          useIsScrolling = _instance$props2.useIsScrolling;
+          useIsScrolling = _instance$props2.useIsScrolling,
+          width = _instance$props2.width;
       var isScrolling = instance.state.isScrolling;
 
       var _instance$_getRangeTo3 = instance._getRangeToRender(),
@@ -966,7 +1023,8 @@ createListComponent({
             key: itemKey(_index2),
             size: size,
             itemId: itemKey(_index2),
-            onUnmount: onItemRowUnmount
+            onUnmount: onItemRowUnmount,
+            width: width
           }));
         }
       }
@@ -1127,18 +1185,10 @@ function createGridComponent(_ref2) {
 
       _this._resetIsScrollingDebounced = function () {
         if (_this._resetIsScrollingTimeoutId !== null) {
-          clearTimeout(_this._resetIsScrollingTimeoutId);
+          cancelTimeout(_this._resetIsScrollingTimeoutId);
         }
 
-        _this._resetIsScrollingTimeoutId = setTimeout(_this._resetIsScrolling, IS_SCROLLING_DEBOUNCE_INTERVAL$1);
-      };
-
-      _this._resetIsScrollingDebounced = function () {
-        if (_this._resetIsScrollingTimeoutId !== null) {
-          clearTimeout(_this._resetIsScrollingTimeoutId);
-        }
-
-        _this._resetIsScrollingTimeoutId = setTimeout(_this._resetIsScrolling, IS_SCROLLING_DEBOUNCE_INTERVAL$1);
+        _this._resetIsScrollingTimeoutId = requestTimeout(_this._resetIsScrolling, IS_SCROLLING_DEBOUNCE_INTERVAL$1);
       };
 
       _this._resetIsScrolling = function () {
@@ -1232,7 +1282,7 @@ function createGridComponent(_ref2) {
 
     _proto.componentWillUnmount = function componentWillUnmount() {
       if (this._resetIsScrollingTimeoutId !== null) {
-        clearTimeout(this._resetIsScrollingTimeoutId);
+        cancelTimeout(this._resetIsScrollingTimeoutId);
       }
     };
 

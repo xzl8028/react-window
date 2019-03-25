@@ -42,6 +42,7 @@ type ItemMeasurerProps = {|
   index: number,
   item: React$Element<any>,
   size: number,
+  width: number,
 |};
 
 export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
@@ -56,11 +57,17 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
     // This is necessary to support the DynamicSizeList layout logic.
     this._measureItem(true);
 
-    if (typeof ResizeObserver !== 'undefined') {
-      // Watch for resizes due to changed content,
-      // Or changes in the size of the parent container.
-      this._resizeObserver = new ResizeObserver(this._onResize);
-      this._resizeObserver.observe(node);
+    this._resizeObserver = new MutationObserver(this._onResize);
+    this._resizeObserver.observe(node, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.width !== this.props.width) {
+      this._onResize();
     }
   }
 

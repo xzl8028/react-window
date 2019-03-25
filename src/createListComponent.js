@@ -4,8 +4,6 @@ import memoizeOne from 'memoize-one';
 import { createElement, PureComponent } from 'react';
 import { cancelTimeout, requestTimeout } from './timer';
 
-import type { TimeoutID } from './timer';
-
 export type ScrollToAlign = 'auto' | 'center' | 'start' | 'end';
 
 type itemSize = number | ((index: number) => number);
@@ -150,6 +148,7 @@ export default function createListComponent({
           : 0,
       scrollUpdateWasRequested: false,
       scrollDelta: 0,
+      scrollHeight: 0,
     };
 
     // Always use explicit constructor for React components.
@@ -438,24 +437,26 @@ export default function createListComponent({
       return this._itemStyleCache;
     });
 
-    _getRangeToRender(scrollTop): [number, number, number, number] {
+    _getRangeToRender(
+      scrollTop,
+      scrollHeight
+    ): [number, number, number, number] {
       const { itemCount, overscanCount } = this.props;
-      const { scrollDirection, scrollOffset, scrollHeight } = this.state;
+      const { scrollDirection, scrollOffset } = this.state;
 
       if (itemCount === 0) {
         return [0, 0, 0, 0];
       }
-
+      const scrollOffsetValue = scrollTop >= 0 ? scrollTop : scrollOffset;
       const startIndex = getStartIndexForOffset(
         this.props,
-        scrollTop || scrollOffset,
+        scrollOffsetValue,
         this._instanceProps
       );
       const stopIndex = getStopIndexForStartIndex(
         this.props,
         startIndex,
-        scrollTop || scrollOffset,
-        scrollHeight,
+        scrollOffsetValue,
         this._instanceProps
       );
 
@@ -540,6 +541,16 @@ export default function createListComponent({
         }
         return;
       }
+
+      if (
+        this.state.scrollHeight !== 0 &&
+        scrollHeight !== this.state.scrollHeight
+      ) {
+        this.setState({
+          scrollHeight,
+        });
+      }
+
       this.setState(prevState => {
         if (prevState.scrollOffset === scrollTop) {
           // Scroll position may have been updated by cDM/cDU,

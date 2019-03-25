@@ -64,7 +64,7 @@ const generateOffsetMeasurements = (props, index, instanceProps) => {
     delete instance._itemStyleCache[itemData[0]];
   }
 
-  for (let i = 1; i <= itemCount; i++) {
+  for (let i = 1; i < itemCount; i++) {
     const prevOffset = itemOffsetMap[itemData[i - 1]] || 0;
 
     // In some browsers (e.g. Firefox) fast scrolling may skip rows.
@@ -206,19 +206,30 @@ const DynamicSizeList = createListComponent({
     props: Props<any>,
     startIndex: number,
     scrollOffset: number,
-    scrollHeight: number,
     instanceProps: InstanceProps
   ): number => {
     const { itemCount } = props;
 
     let stopIndex = startIndex;
-    const maxOffset = scrollHeight - scrollOffset;
+    const maxOffset = instanceProps.totalMeasuredSize - scrollOffset;
     const itemMetadata = getItemMetadata(props, stopIndex, instanceProps);
     let offset = itemMetadata.offset + (itemMetadata.size || 0);
-    while (stopIndex <= itemCount && offset <= maxOffset) {
+    let closestOffsetIndex = 0;
+    let previousOffset = 0;
+    while (stopIndex < itemCount && offset <= maxOffset) {
       const itemMetadata = getItemMetadata(props, stopIndex, instanceProps);
       offset = itemMetadata.offset + itemMetadata.size;
+      if (offset > previousOffset) {
+        closestOffsetIndex = stopIndex;
+      } else if (itemMetadata.offset === 0 && stopIndex !== 0) {
+        return --stopIndex;
+      }
+      previousOffset = offset;
       stopIndex++;
+    }
+
+    if (stopIndex >= itemCount) {
+      return closestOffsetIndex;
     }
 
     return stopIndex;
@@ -266,6 +277,7 @@ const DynamicSizeList = createListComponent({
         instance.forceUpdate();
         return;
       }
+      const element = ((instance._outerRef: any): HTMLDivElement);
 
       if (
         instance.state.scrollOffset + instance.props.height >=
@@ -276,15 +288,13 @@ const DynamicSizeList = createListComponent({
         return;
       }
 
-      generateOffsetMeasurements(props, index, instanceProps);
-
-      const element = ((instance._outerRef: any): HTMLDivElement);
-
       const [, , , visibleStopIndex] = instance._getRangeToRender(
         element.scrollTop
       );
 
-      if (index <= visibleStopIndex) {
+      generateOffsetMeasurements(props, index, instanceProps);
+
+      if (index < visibleStopIndex - 1) {
         instance.forceUpdate();
         return;
       }
@@ -400,7 +410,7 @@ const DynamicSizeList = createListComponent({
         }
         generateOffsetMeasurements(props, index, instanceProps);
 
-        if (index <= visibleStopIndex) {
+        if (index < visibleStopIndex) {
           instance.forceUpdate();
           return;
         }
@@ -455,6 +465,7 @@ const DynamicSizeList = createListComponent({
         itemData,
         itemKey = defaultItemKey,
         useIsScrolling,
+        width,
       } = instance.props;
       const { isScrolling } = instance.state;
 
@@ -490,6 +501,7 @@ const DynamicSizeList = createListComponent({
               size,
               itemId: itemKey(index),
               onUnmount: onItemRowUnmount,
+              width,
             })
           );
         }
