@@ -807,6 +807,7 @@ createListComponent({
 
       if (instance.state.scrollOffset + instance.props.height >= instanceProps.totalMeasuredSize - 10) {
         generateOffsetMeasurements(props, index, instanceProps);
+        instance.forceUpdate();
         instance.scrollToItem(0, 'end');
         return;
       }
