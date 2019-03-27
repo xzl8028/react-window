@@ -4,6 +4,7 @@ import { createElement } from 'react';
 
 import createListComponent, { defaultItemKey } from './createListComponent';
 import ItemMeasurer from './ItemMeasurer';
+import isBrowserChrome from './isChrome';
 
 import type { Props, ScrollToAlign } from './createListComponent';
 
@@ -324,10 +325,15 @@ const DynamicSizeList = createListComponent({
             if (mountingCorrections === 1) {
               correctScroll();
             } else {
-              if (correctionFrame) {
-                window.cancelAnimationFrame(correctionFrame);
+              const isChrome = isBrowserChrome();
+              if (isChrome) {
+                if (correctionFrame) {
+                  window.cancelAnimationFrame(correctionFrame);
+                }
+                correctionFrame = window.requestAnimationFrame(correctScroll);
+              } else {
+                correctScroll();
               }
-              correctionFrame = window.requestAnimationFrame(correctScroll);
             }
           }
         }
