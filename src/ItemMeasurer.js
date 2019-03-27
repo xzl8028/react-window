@@ -24,13 +24,13 @@ class ResizeObserverEntry {
 
 type Entries = $ReadOnlyArray<ResizeObserverEntry>;
 
-type ResizeObserverCallback = {
+type DomChangeObserverCallback = {
   // eslint-disable-next-line no-use-before-define
   (entries: Entries, observer: ResizeObserver): void,
 };
 
-declare class ResizeObserver {
-  constructor(ResizeObserverCallback): ResizeObserver;
+declare class domChangeObserver {
+  constructor(DomChangeObserverCallback): domChangeObserver;
   observe(target: HTMLElement): void;
   unobserve(target: HTMLElement): void;
   disconnect(): void;
@@ -47,7 +47,8 @@ type ItemMeasurerProps = {|
 
 export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
   _node: HTMLElement | null = null;
-  _resizeObserver: ResizeObserver | null = null;
+  _domChangeObserver: domChangeObserver | null = null;
+  _resizeAnimationFrame = null;
 
   componentDidMount() {
     const node = ((findDOMNode(this): any): HTMLElement);
@@ -57,11 +58,14 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
     // This is necessary to support the DynamicSizeList layout logic.
     this._measureItem(true);
 
-    this._resizeObserver = new MutationObserver(this._onResize);
-    this._resizeObserver.observe(node, {
+    this._domChangeObserver = new MutationObserver(this._onResize);
+    this._domChangeObserver.observe(node, {
       childList: true,
       characterData: true,
       subtree: true,
+    });
+    this._resizeAnimationFrame = window.requestAnimationFrame(() => {
+      this.props.elementResizeDetector.listenTo(this._node, this._onResize);
     });
   }
 
@@ -73,11 +77,15 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
 
   componentWillUnmount() {
     const { onUnmount, itemId, index } = this.props;
-    if (this._resizeObserver !== null) {
-      this._resizeObserver.disconnect();
-    }
+    this._domChangeObserver.disconnect();
+    this.props.elementResizeDetector.uninstall(this._node);
+
     if (onUnmount) {
       onUnmount(itemId, index);
+    }
+
+    if (this._resizeAnimationFrame) {
+      window.cancelAnimationFrame(this._resizeAnimationFrame);
     }
   }
 

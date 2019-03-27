@@ -2,6 +2,7 @@
 
 import memoizeOne from 'memoize-one';
 import { createElement, PureComponent } from 'react';
+
 import { cancelTimeout, requestTimeout } from './timer';
 
 export type ScrollToAlign = 'auto' | 'center' | 'start' | 'end';
@@ -129,6 +130,7 @@ export default function createListComponent({
     _resetIsScrollingTimeoutId: TimeoutID | null = null;
     _scrollCorrectionInProgress = false;
     _atBottom = true;
+    _elementResizeDetector: null;
 
     static defaultProps = {
       direction: 'vertical',
@@ -241,7 +243,6 @@ export default function createListComponent({
       if (this._resetIsScrollingTimeoutId !== null) {
         cancelTimeout(this._resetIsScrollingTimeoutId);
       }
-
       this._unmountHook();
     }
 

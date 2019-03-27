@@ -10,6 +10,7 @@ var _assertThisInitialized = _interopDefault(require('@babel/runtime/helpers/ass
 var memoizeOne = _interopDefault(require('memoize-one'));
 var react = require('react');
 var reactDom = require('react-dom');
+var elementResizeDetectorMaker = _interopDefault(require('element-resize-detector'));
 
 // Animation frame based implementation of setTimeout.
 // Inspired by Joe Lambert, https://gist.github.com/joelambert/1002116#file-requesttimeout-js
@@ -72,6 +73,7 @@ function createListComponent(_ref) {
       _this._resetIsScrollingTimeoutId = null;
       _this._scrollCorrectionInProgress = false;
       _this._atBottom = true;
+      _this._elementResizeDetector = void 0;
       _this.state = {
         isScrolling: false,
         scrollDirection: 'backward',
@@ -516,7 +518,8 @@ function (_Component) {
 
     _this = _Component.call.apply(_Component, [this].concat(args)) || this;
     _this._node = null;
-    _this._resizeObserver = null;
+    _this._domChangeObserver = null;
+    _this._resizeAnimationFrame = null;
 
     _this._measureItem = function (isCommitPhase) {
       var _this$props = _this.props,
@@ -545,18 +548,24 @@ function (_Component) {
   var _proto = ItemMeasurer.prototype;
 
   _proto.componentDidMount = function componentDidMount() {
+    var _this2 = this;
+
     var node = reactDom.findDOMNode(this);
     this._node = node; // Force sync measure for the initial mount.
     // This is necessary to support the DynamicSizeList layout logic.
 
     this._measureItem(true);
 
-    this._resizeObserver = new MutationObserver(this._onResize);
+    this._domChangeObserver = new MutationObserver(this._onResize);
 
-    this._resizeObserver.observe(node, {
+    this._domChangeObserver.observe(node, {
       childList: true,
       characterData: true,
       subtree: true
+    });
+
+    this._resizeAnimationFrame = window.requestAnimationFrame(function () {
+      _this2.props.elementResizeDetector.listenTo(_this2._node, _this2._onResize);
     });
   };
 
@@ -572,12 +581,16 @@ function (_Component) {
         itemId = _this$props2.itemId,
         index = _this$props2.index;
 
-    if (this._resizeObserver !== null) {
-      this._resizeObserver.disconnect();
-    }
+    this._domChangeObserver.disconnect();
+
+    this.props.elementResizeDetector.uninstall(this._node);
 
     if (onUnmount) {
       onUnmount(itemId, index);
+    }
+
+    if (this._resizeAnimationFrame) {
+      window.cancelAnimationFrame(this._resizeAnimationFrame);
     }
   };
 
@@ -614,6 +627,11 @@ function isBrowserChrome() {
 }
 
 var DEFAULT_ESTIMATED_ITEM_SIZE = 50;
+var elementResizeDetector =
+/*#__PURE__*/
+elementResizeDetectorMaker({
+  strategy: 'scroll'
+});
 
 var getItemMetadata = function getItemMetadata(props, index, instanceProps) {
   var instance = instanceProps.instance,
@@ -1062,7 +1080,8 @@ createListComponent({
             size: size,
             itemId: itemKey(_index2),
             onUnmount: onItemRowUnmount,
-            width: width
+            width: width,
+            elementResizeDetector: elementResizeDetector
           }));
         }
       }

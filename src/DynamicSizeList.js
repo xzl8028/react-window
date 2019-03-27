@@ -1,6 +1,7 @@
 // @flow
 
 import { createElement } from 'react';
+import elementResizeDetectorMaker from 'element-resize-detector';
 
 import createListComponent, { defaultItemKey } from './createListComponent';
 import ItemMeasurer from './ItemMeasurer';
@@ -9,6 +10,10 @@ import isBrowserChrome from './isChrome';
 import type { Props, ScrollToAlign } from './createListComponent';
 
 const DEFAULT_ESTIMATED_ITEM_SIZE = 50;
+
+const elementResizeDetector = elementResizeDetectorMaker({
+  strategy: 'scroll',
+});
 
 type DynanmicProps = {|
   estimatedItemSize: number,
@@ -252,6 +257,7 @@ const DynamicSizeList = createListComponent({
     let unMountingCorrections = 0;
     let correctedInstances = 0;
     let correctionFrame;
+
     const handleNewMeasurements: HandleNewMeasurements = (
       key: number,
       newSize: number,
@@ -509,6 +515,7 @@ const DynamicSizeList = createListComponent({
               itemId: itemKey(index),
               onUnmount: onItemRowUnmount,
               width,
+              elementResizeDetector,
             })
           );
         }
