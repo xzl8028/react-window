@@ -401,7 +401,8 @@ function createListComponent(_ref) {
     _proto._getRangeToRender = function _getRangeToRender(scrollTop, scrollHeight) {
       var _this$props4 = this.props,
           itemCount = _this$props4.itemCount,
-          overscanCount = _this$props4.overscanCount;
+          overscanCountForward = _this$props4.overscanCountForward,
+          overscanCountBackward = _this$props4.overscanCountBackward;
       var _this$state3 = this.state,
           scrollDirection = _this$state3.scrollDirection,
           scrollOffset = _this$state3.scrollOffset;
@@ -415,13 +416,13 @@ function createListComponent(_ref) {
       var stopIndex = getStopIndexForStartIndex(this.props, startIndex, scrollOffsetValue, this._instanceProps); // Overscan by one item in each direction so that tab/focus works.
       // If there isn't at least one extra item, tab loops back around.
 
-      var overscanBackward = scrollDirection === 'forward' ? 50 : Math.max(1, overscanCount);
-      var overscanForward = scrollDirection === 'backward' ? 50 : Math.max(1, overscanCount);
+      var overscanBackward = scrollDirection === 'forward' ? overscanCountBackward : Math.max(1, overscanCountForward);
+      var overscanForward = scrollDirection === 'backward' ? overscanCountBackward : Math.max(1, overscanCountForward);
       var minValue = Math.max(0, startIndex - overscanForward);
       var maxValue = Math.max(0, Math.min(itemCount - 1, stopIndex + overscanBackward));
 
-      if (maxValue < 100 && maxValue < itemCount) {
-        return [minValue, Math.min(99, itemCount - 1), startIndex, stopIndex];
+      if (maxValue < 2 * overscanCountBackward && maxValue < itemCount) {
+        return [minValue, Math.min(2 * overscanCountBackward - 1, itemCount - 1), startIndex, stopIndex];
       }
 
       return [minValue, maxValue, startIndex, stopIndex];
@@ -464,7 +465,8 @@ function createListComponent(_ref) {
     innerTagName: 'div',
     itemData: undefined,
     outerTagName: 'div',
-    overscanCount: 2,
+    overscanCountForward: 30,
+    overscanCountBackward: 10,
     useIsScrolling: false
   }, _temp;
 } // NOTE: I considered further wrapping individual items with a pure ListItem component.

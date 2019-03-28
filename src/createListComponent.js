@@ -50,7 +50,8 @@ export type Props<T> = {|
   onScroll?: onScrollCallback,
   outerRef?: any,
   outerTagName?: string,
-  overscanCount: number,
+  overscanCountForward: number,
+  overscanCountBackward: number,
   style?: Object,
   useIsScrolling: boolean,
   width: number | string,
@@ -135,7 +136,8 @@ export default function createListComponent({
       innerTagName: 'div',
       itemData: undefined,
       outerTagName: 'div',
-      overscanCount: 2,
+      overscanCountForward: 30,
+      overscanCountBackward: 10,
       useIsScrolling: false,
     };
 
@@ -441,7 +443,11 @@ export default function createListComponent({
       scrollTop,
       scrollHeight
     ): [number, number, number, number] {
-      const { itemCount, overscanCount } = this.props;
+      const {
+        itemCount,
+        overscanCountForward,
+        overscanCountBackward,
+      } = this.props;
       const { scrollDirection, scrollOffset } = this.state;
 
       if (itemCount === 0) {
@@ -463,9 +469,14 @@ export default function createListComponent({
       // Overscan by one item in each direction so that tab/focus works.
       // If there isn't at least one extra item, tab loops back around.
       const overscanBackward =
-        scrollDirection === 'forward' ? 50 : Math.max(1, overscanCount);
+        scrollDirection === 'forward'
+          ? overscanCountBackward
+          : Math.max(1, overscanCountForward);
+
       const overscanForward =
-        scrollDirection === 'backward' ? 50 : Math.max(1, overscanCount);
+        scrollDirection === 'backward'
+          ? overscanCountBackward
+          : Math.max(1, overscanCountForward);
 
       const minValue = Math.max(0, startIndex - overscanForward);
       const maxValue = Math.max(
@@ -473,8 +484,13 @@ export default function createListComponent({
         Math.min(itemCount - 1, stopIndex + overscanBackward)
       );
 
-      if (maxValue < 100 && maxValue < itemCount) {
-        return [minValue, Math.min(99, itemCount - 1), startIndex, stopIndex];
+      if (maxValue < 2 * overscanCountBackward && maxValue < itemCount) {
+        return [
+          minValue,
+          Math.min(2 * overscanCountBackward - 1, itemCount - 1),
+          startIndex,
+          stopIndex,
+        ];
       }
       return [minValue, maxValue, startIndex, stopIndex];
     }
