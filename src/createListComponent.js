@@ -226,7 +226,7 @@ export default function createListComponent({
       }
 
       this._commitHook();
-      if (prevProps.itemData !== this.props.itemData) {
+      if (prevProps.itemData.length !== this.props.itemData.length) {
         this._dataChange();
       }
 
