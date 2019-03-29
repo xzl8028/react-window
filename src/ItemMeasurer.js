@@ -39,6 +39,7 @@ declare class ResizeObserver {
 type ItemMeasurerProps = {|
   direction: Direction,
   handleNewMeasurements: HandleNewMeasurements,
+  skipResizeClass: string,
   index: number,
   item: React$Element<any>,
   size: number,
@@ -112,7 +113,15 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
     }
   };
 
-  _onResize = () => {
+  _onResize = event => {
+    const { skipResizeClass } = this.props;
+    if (
+      event &&
+      skipResizeClass &&
+      event.findIndex(el => el.target.className.includes(skipResizeClass)) !== -1) {
+      return;
+    }
+
     this._measureItem(false);
   };
 }

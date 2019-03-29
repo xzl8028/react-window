@@ -4,11 +4,11 @@ Object.defineProperty(exports, '__esModule', { value: true });
 
 function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
 
-var _extends = _interopDefault(require('@babel/runtime/helpers/extends'));
-var _inheritsLoose = _interopDefault(require('@babel/runtime/helpers/inheritsLoose'));
-var _assertThisInitialized = _interopDefault(require('@babel/runtime/helpers/assertThisInitialized'));
-var memoizeOne = _interopDefault(require('memoize-one'));
 var react = require('react');
+var _extends = _interopDefault(require('@babel/runtime/helpers/extends'));
+var _assertThisInitialized = _interopDefault(require('@babel/runtime/helpers/assertThisInitialized'));
+var _inheritsLoose = _interopDefault(require('@babel/runtime/helpers/inheritsLoose'));
+var memoizeOne = _interopDefault(require('memoize-one'));
 var reactDom = require('react-dom');
 
 // Animation frame based implementation of setTimeout.
@@ -67,7 +67,7 @@ function createListComponent(_ref) {
       var _this;
 
       _this = _PureComponent.call(this, props) || this;
-      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_assertThisInitialized(_this)));
+      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_this));
       _this._outerRef = void 0;
       _this._resetIsScrollingTimeoutId = null;
       _this._scrollCorrectionInProgress = false;
@@ -229,7 +229,7 @@ function createListComponent(_ref) {
         });
       };
 
-      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_assertThisInitialized(_this)));
+      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_this));
       return _this;
     }
 
@@ -537,7 +537,15 @@ function (_Component) {
       }
     };
 
-    _this._onResize = function () {
+    _this._onResize = function (event) {
+      var skipResizeClass = _this.props.skipResizeClass;
+
+      if (event && skipResizeClass && event.findIndex(function (el) {
+        return el.target.className.includes(skipResizeClass);
+      }) !== -1) {
+        return;
+      }
+
       _this._measureItem(false);
     };
 
@@ -999,7 +1007,8 @@ createListComponent({
           _instance$props2$item = _instance$props2.itemKey,
           itemKey = _instance$props2$item === void 0 ? defaultItemKey : _instance$props2$item,
           useIsScrolling = _instance$props2.useIsScrolling,
-          width = _instance$props2.width;
+          width = _instance$props2.width,
+          skipResizeClass = _instance$props2.skipResizeClass;
       var isScrolling = instance.state.isScrolling;
 
       var _instance$_getRangeTo3 = instance._getRangeToRender(),
@@ -1033,7 +1042,8 @@ createListComponent({
             size: size,
             itemId: itemKey(_index2),
             onUnmount: onItemRowUnmount,
-            width: width
+            width: width,
+            skipResizeClass: skipResizeClass
           }));
         }
       }
@@ -1094,7 +1104,7 @@ function createGridComponent(_ref2) {
       var _this;
 
       _this = _PureComponent.call(this, props) || this;
-      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_assertThisInitialized(_this)));
+      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_this));
       _this._resetIsScrollingTimeoutId = null;
       _this._outerRef = void 0;
       _this.state = {
