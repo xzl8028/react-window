@@ -467,6 +467,7 @@ const DynamicSizeList = createListComponent({
         itemKey = defaultItemKey,
         useIsScrolling,
         width,
+        skipResizeClass,
       } = instance.props;
       const { isScrolling } = instance.state;
 
@@ -503,6 +504,7 @@ const DynamicSizeList = createListComponent({
               itemId: itemKey(index),
               onUnmount: onItemRowUnmount,
               width,
+              skipResizeClass,
             })
           );
         }

@@ -48,6 +48,7 @@ export type Props<T> = {|
   itemSize: itemSize,
   onItemsRendered?: onItemsRenderedCallback,
   onScroll?: onScrollCallback,
+  skipResizeClass?: string,
   outerRef?: any,
   outerTagName?: string,
   overscanCountForward: number,
