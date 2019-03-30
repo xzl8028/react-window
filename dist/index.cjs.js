@@ -541,7 +541,7 @@ function (_Component) {
       var skipResizeClass = _this.props.skipResizeClass;
 
       if (event && skipResizeClass && event.findIndex(function (el) {
-        return el.target.className.includes(skipResizeClass);
+        return el.target && el.target.className && el.target.className.includes(skipResizeClass);
       }) !== -1) {
         return;
       }
