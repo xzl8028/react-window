@@ -118,7 +118,7 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
     if (
       event &&
       skipResizeClass &&
-      event.findIndex(el => el.target.className.includes(skipResizeClass)) !== -1) {
+      event.findIndex((el) => el.target && el.target.className && el.target.className.includes(skipResizeClass)) !== -1) {
       return;
     }
 
