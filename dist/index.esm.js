@@ -1,8 +1,8 @@
-import { createElement, PureComponent, Component } from 'react';
 import _extends from '@babel/runtime/helpers/esm/extends';
-import _assertThisInitialized from '@babel/runtime/helpers/esm/assertThisInitialized';
 import _inheritsLoose from '@babel/runtime/helpers/esm/inheritsLoose';
+import _assertThisInitialized from '@babel/runtime/helpers/esm/assertThisInitialized';
 import memoizeOne from 'memoize-one';
+import React, { createElement, PureComponent, Component } from 'react';
 import { findDOMNode } from 'react-dom';
 
 // Animation frame based implementation of setTimeout.
@@ -61,7 +61,7 @@ function createListComponent(_ref) {
       var _this;
 
       _this = _PureComponent.call(this, props) || this;
-      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_this));
+      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_assertThisInitialized(_this)));
       _this._outerRef = void 0;
       _this._resetIsScrollingTimeoutId = null;
       _this._scrollCorrectionInProgress = false;
@@ -223,7 +223,7 @@ function createListComponent(_ref) {
         });
       };
 
-      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_this));
+      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_assertThisInitialized(_this)));
       return _this;
     }
 
@@ -236,13 +236,22 @@ function createListComponent(_ref) {
     var _proto = List.prototype;
 
     _proto.scrollTo = function scrollTo(scrollOffset) {
+      var _this2 = this;
+
+      var element = this._outerRef;
+      this._scrollCorrectionInProgress = true;
       this.setState(function (prevState) {
         return {
           scrollDirection: prevState.scrollOffset >= scrollOffset ? 'backward' : 'forward',
           scrollOffset: scrollOffset,
           scrollUpdateWasRequested: true
         };
-      }, this._resetIsScrollingDebounced);
+      }, function () {
+        element.scrollTop = scrollOffset;
+        _this2._scrollCorrectionInProgress = false;
+
+        _this2._resetIsScrollingDebounced();
+      });
     };
 
     _proto.scrollToItem = function scrollToItem(index, align) {
@@ -273,20 +282,6 @@ function createListComponent(_ref) {
     };
 
     _proto.componentDidUpdate = function componentDidUpdate(prevProps, prevState) {
-      var direction = this.props.direction;
-      var _this$state = this.state,
-          scrollOffset = _this$state.scrollOffset,
-          scrollUpdateWasRequested = _this$state.scrollUpdateWasRequested;
-      var element = this._outerRef;
-
-      if (scrollUpdateWasRequested && this._outerRef !== null) {
-        if (direction === 'horizontal') {
-          element.scrollLeft = scrollOffset;
-        } else {
-          element.scrollTop = scrollOffset;
-        }
-      }
-
       if (this.state.scrolledToInitIndex) {
         this._callPropsCallbacks();
       }
@@ -373,10 +368,10 @@ function createListComponent(_ref) {
       }
 
       if (typeof this.props.onScroll === 'function') {
-        var _this$state2 = this.state,
-            _scrollDirection = _this$state2.scrollDirection,
-            _scrollOffset = _this$state2.scrollOffset,
-            _scrollUpdateWasRequested = _this$state2.scrollUpdateWasRequested;
+        var _this$state = this.state,
+            _scrollDirection = _this$state.scrollDirection,
+            _scrollOffset = _this$state.scrollOffset,
+            _scrollUpdateWasRequested = _this$state.scrollUpdateWasRequested;
 
         this._callOnScroll(_scrollDirection, _scrollOffset, _scrollUpdateWasRequested);
       }
@@ -403,9 +398,9 @@ function createListComponent(_ref) {
           itemCount = _this$props4.itemCount,
           overscanCountForward = _this$props4.overscanCountForward,
           overscanCountBackward = _this$props4.overscanCountBackward;
-      var _this$state3 = this.state,
-          scrollDirection = _this$state3.scrollDirection,
-          scrollOffset = _this$state3.scrollOffset;
+      var _this$state2 = this.state,
+          scrollDirection = _this$state2.scrollDirection,
+          scrollOffset = _this$state2.scrollOffset;
 
       if (itemCount === 0) {
         return [0, 0, 0, 0];
@@ -498,6 +493,63 @@ var validateSharedProps = function validateSharedProps(_ref2) {
   }
 };
 
+var scrollBarWidth = 8;
+var scrollableContainerStyles = {
+  display: 'inline',
+  width: '0px',
+  height: '0px',
+  zIndex: '-1',
+  overflow: 'hidden',
+  margin: '0px',
+  padding: '0px'
+};
+var scrollableWrapperStyle = {
+  position: 'absolute',
+  flex: '0 0 auto',
+  overflow: 'hidden',
+  visibility: 'hidden',
+  zIndex: '-1',
+  width: '100%',
+  height: '100%',
+  left: '0px',
+  top: '0px'
+};
+var expandShrinkContainerStyles = {
+  flex: '0 0 auto',
+  overflow: 'hidden',
+  zIndex: '-1',
+  visibility: 'hidden',
+  left: "-" + (scrollBarWidth + 1) + "px",
+  //8px(scrollbar width) + 1px
+  bottom: "-" + scrollBarWidth + "px",
+  //8px because of scrollbar width
+  right: "-" + scrollBarWidth + "px",
+  //8px because of scrollbar width
+  top: "-" + (scrollBarWidth + 1) + "px" //8px(scrollbar width) + 1px
+
+};
+var expandShrinkStyles = {
+  position: 'absolute',
+  flex: '0 0 auto',
+  visibility: 'hidden',
+  overflow: 'scroll',
+  zIndex: '-1',
+  width: '100%',
+  height: '100%'
+};
+var shrinkChildStyle = {
+  position: 'absolute',
+  height: '200%',
+  width: '200%'
+}; //values below need to be changed when scrollbar width changes
+//TODO: change these to be dynamic
+
+var shrinkScrollDelta = 2 * scrollBarWidth + 1; // 17 = 2* scrollbar width(8px) + 1px as buffer
+// 27 = 2* scrollbar width(8px) + 1px as buffer + 10px(this value is based of off lib(Link below). Probably not needed but doesnt hurt to leave)
+//https://github.com/wnr/element-resize-detector/blob/27983e59dce9d8f1296d8f555dc2340840fb0804/src/detection-strategy/scroll.js#L246
+
+var expandScrollDelta = shrinkScrollDelta + 10;
+
 var ItemMeasurer =
 /*#__PURE__*/
 function (_Component) {
@@ -513,6 +565,74 @@ function (_Component) {
     _this = _Component.call.apply(_Component, [this].concat(args)) || this;
     _this._node = null;
     _this._resizeObserver = null;
+    _this._resizeSensorExpand = React.createRef();
+    _this._resizeSensorShrink = React.createRef();
+
+    _this.positionScrollBars = function (height, width) {
+      if (height === void 0) {
+        height = _this.props.size;
+      }
+
+      if (width === void 0) {
+        width = _this.props.width;
+      }
+
+      //we are position these hiiden div scroll bars to the end so they can emit
+      //scroll event when height in the div changes
+      //Heavily inspired from https://github.com/marcj/css-element-queries/blob/master/src/ResizeSensor.js
+      //and https://github.com/wnr/element-resize-detector/blob/master/src/detection-strategy/scroll.js
+      //For more info http://www.backalleycoder.com/2013/03/18/cross-browser-event-based-element-resize-detection/#comment-244
+      if (typeof _this._resizeSensorExpand.current.scrollBy === 'function') {
+        _this._resizeSensorExpand.current.scrollBy(height + expandScrollDelta, width + expandScrollDelta);
+
+        _this._resizeSensorShrink.current.scrollBy(2 * height + shrinkScrollDelta, 2 * width + shrinkScrollDelta);
+      } else {
+        _this._resizeSensorExpand.current.scrollLeft = width + expandScrollDelta;
+        _this._resizeSensorExpand.current.scrollTop = height + expandScrollDelta;
+        _this._resizeSensorShrink.current.scrollTop = 2 * height + shrinkScrollDelta;
+        _this._resizeSensorShrink.current.scrollLeft = 2 * width + shrinkScrollDelta;
+      }
+    };
+
+    _this.scrollingDiv = function (event) {
+      if (event.target.offsetHeight !== _this.props.size) {
+        _this._onResize();
+      }
+    };
+
+    _this.renderItems = function () {
+      var item = _this.props.item;
+      var expandChildStyle = {
+        position: 'absolute',
+        left: '0',
+        top: '0',
+        height: _this.props.size + expandScrollDelta + "px",
+        width: _this.props.width + expandScrollDelta + "px"
+      };
+      var renderItem = React.createElement("div", {
+        style: _this.props.style
+      }, item, React.createElement("div", {
+        style: scrollableContainerStyles
+      }, React.createElement("div", {
+        dir: "ltr",
+        style: scrollableWrapperStyle
+      }, React.createElement("div", {
+        style: expandShrinkContainerStyles
+      }, React.createElement("div", {
+        style: expandShrinkStyles,
+        ref: _this._resizeSensorExpand,
+        onScroll: _this.scrollingDiv
+      }, React.createElement("div", {
+        style: expandChildStyle
+      })), React.createElement("div", {
+        style: expandShrinkStyles,
+        ref: _this._resizeSensorShrink,
+        onScroll: _this.scrollingDiv
+      }, React.createElement("div", {
+        style: shrinkChildStyle
+      }))))));
+      return renderItem;
+    };
 
     _this._measureItem = function (isCommitPhase) {
       var _this$props = _this.props,
@@ -555,18 +675,20 @@ function (_Component) {
 
     this._measureItem(true);
 
-    this._resizeObserver = new MutationObserver(this._onResize);
-
-    this._resizeObserver.observe(node, {
-      childList: true,
-      characterData: true,
-      subtree: true
-    });
+    if (this.props.size) {
+      // Don't wait for positioning scrollbars when we have size
+      // This is needed triggering an event for remounting a post
+      this.positionScrollBars();
+    }
   };
 
   _proto.componentDidUpdate = function componentDidUpdate(prevProps) {
     if (prevProps.width !== this.props.width) {
       this._onResize();
+    }
+
+    if (prevProps.size === 0 && this.props.size !== 0 || prevProps.size !== this.props.size) {
+      this.positionScrollBars();
     }
   };
 
@@ -576,17 +698,13 @@ function (_Component) {
         itemId = _this$props2.itemId,
         index = _this$props2.index;
 
-    if (this._resizeObserver !== null) {
-      this._resizeObserver.disconnect();
-    }
-
     if (onUnmount) {
       onUnmount(itemId, index);
     }
   };
 
   _proto.render = function render() {
-    return this.props.item;
+    return this.renderItems();
   };
 
   return ItemMeasurer;
@@ -809,7 +927,7 @@ createListComponent({
 
       var element = instance._outerRef;
 
-      if (instance.state.scrollOffset + instance.props.height >= instanceProps.totalMeasuredSize - 10) {
+      if (instance.state.scrollOffset + instance.props.height >= element.scrollHeight - 10) {
         generateOffsetMeasurements(props, index, instanceProps);
         instance.forceUpdate();
         instance.scrollToItem(0, 'end');
@@ -1023,8 +1141,7 @@ createListComponent({
           var item = createElement(children, {
             data: itemData,
             itemId: itemData[_index2],
-            isScrolling: useIsScrolling ? isScrolling : undefined,
-            style: style
+            isScrolling: useIsScrolling ? isScrolling : undefined
           }); // Always wrap children in a ItemMeasurer to detect changes in size.
 
           items.push(createElement(ItemMeasurer, {
@@ -1037,7 +1154,8 @@ createListComponent({
             itemId: itemKey(_index2),
             onUnmount: onItemRowUnmount,
             width: width,
-            skipResizeClass: skipResizeClass
+            skipResizeClass: skipResizeClass,
+            style: style
           }));
         }
       }
@@ -1098,7 +1216,7 @@ function createGridComponent(_ref2) {
       var _this;
 
       _this = _PureComponent.call(this, props) || this;
-      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_this));
+      _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_assertThisInitialized(_this)));
       _this._resetIsScrollingTimeoutId = null;
       _this._outerRef = void 0;
       _this.state = {
