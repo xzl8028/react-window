@@ -33,7 +33,6 @@ function requestTimeout(callback, delay) {
   return timeoutID;
 }
 
-var IS_SCROLLING_DEBOUNCE_INTERVAL = 150;
 var defaultItemKey = function defaultItemKey(index, data) {
   return index;
 };
@@ -63,11 +62,9 @@ function createListComponent(_ref) {
       _this = _PureComponent.call(this, props) || this;
       _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_assertThisInitialized(_this)));
       _this._outerRef = void 0;
-      _this._resetIsScrollingTimeoutId = null;
       _this._scrollCorrectionInProgress = false;
       _this._atBottom = true;
       _this.state = {
-        isScrolling: false,
         scrollDirection: 'backward',
         scrollOffset: typeof _this.props.initialScrollOffset === 'number' ? _this.props.initialScrollOffset : 0,
         scrollUpdateWasRequested: false,
@@ -132,17 +129,15 @@ function createListComponent(_ref) {
           if (prevState.scrollOffset === scrollLeft) {
             // Scroll position may have been updated by cDM/cDU,
             // In which case we don't need to trigger another render,
-            // And we don't want to update state.isScrolling.
             return null;
           }
 
           return {
-            isScrolling: true,
             scrollDirection: prevState.scrollOffset < scrollLeft ? 'forward' : 'backward',
             scrollOffset: scrollLeft,
             scrollUpdateWasRequested: false
           };
-        }, _this._resetIsScrollingDebounced);
+        });
       };
 
       _this._onScrollVertical = function (event) {
@@ -176,12 +171,10 @@ function createListComponent(_ref) {
           if (prevState.scrollOffset === scrollTop) {
             // Scroll position may have been updated by cDM/cDU,
             // In which case we don't need to trigger another render,
-            // And we don't want to update state.isScrolling.
             return null;
           }
 
           return {
-            isScrolling: true,
             scrollDirection: prevState.scrollOffset < scrollTop ? 'forward' : 'backward',
             scrollOffset: scrollTop,
             scrollUpdateWasRequested: false,
@@ -189,7 +182,7 @@ function createListComponent(_ref) {
             scrollTop: scrollTop,
             scrollDelta: 0
           };
-        }, _this._resetIsScrollingDebounced);
+        });
       };
 
       _this._outerRefSetter = function (ref) {
@@ -201,26 +194,6 @@ function createListComponent(_ref) {
         } else if (outerRef != null && typeof outerRef === 'object' && outerRef.hasOwnProperty('current')) {
           outerRef.current = ref;
         }
-      };
-
-      _this._resetIsScrollingDebounced = function () {
-        if (_this._resetIsScrollingTimeoutId !== null) {
-          cancelTimeout(_this._resetIsScrollingTimeoutId);
-        }
-
-        _this._resetIsScrollingTimeoutId = requestTimeout(_this._resetIsScrolling, IS_SCROLLING_DEBOUNCE_INTERVAL);
-      };
-
-      _this._resetIsScrolling = function () {
-        _this._resetIsScrollingTimeoutId = null;
-
-        _this.setState({
-          isScrolling: false
-        }, function () {
-          // Clear style cache after state update has been committed.
-          // This way we don't break pure sCU for items that don't use isScrolling param.
-          _this._getItemStyleCache(-1);
-        });
       };
 
       _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_assertThisInitialized(_this)));
@@ -249,8 +222,6 @@ function createListComponent(_ref) {
       }, function () {
         element.scrollTop = scrollOffset;
         _this2._scrollCorrectionInProgress = false;
-
-        _this2._resetIsScrollingDebounced();
       });
     };
 
@@ -303,10 +274,6 @@ function createListComponent(_ref) {
     };
 
     _proto.componentWillUnmount = function componentWillUnmount() {
-      if (this._resetIsScrollingTimeoutId !== null) {
-        cancelTimeout(this._resetIsScrollingTimeoutId);
-      }
-
       this._unmountHook();
     };
 
@@ -320,7 +287,6 @@ function createListComponent(_ref) {
           outerTagName = _this$props3.outerTagName,
           style = _this$props3.style,
           width = _this$props3.width;
-      var isScrolling = this.state.isScrolling;
       var onScroll = direction === 'vertical' ? this._onScrollVertical : this._onScrollHorizontal;
 
       var items = this._renderItems(); // Read this value AFTER items have been created,
@@ -344,7 +310,6 @@ function createListComponent(_ref) {
         ref: innerRef,
         style: {
           height: direction === 'horizontal' ? '100%' : estimatedTotalSize,
-          pointerEvents: isScrolling ? 'none' : '',
           width: direction === 'horizontal' ? estimatedTotalSize : '100%',
           position: 'relative',
           minHeight: '100%'
@@ -429,9 +394,7 @@ function createListComponent(_ref) {
           itemCount = _this$props5.itemCount,
           itemData = _this$props5.itemData,
           _this$props5$itemKey = _this$props5.itemKey,
-          itemKey = _this$props5$itemKey === void 0 ? defaultItemKey : _this$props5$itemKey,
-          useIsScrolling = _this$props5.useIsScrolling;
-      var isScrolling = this.state.isScrolling;
+          itemKey = _this$props5$itemKey === void 0 ? defaultItemKey : _this$props5$itemKey;
 
       var _this$_getRangeToRend2 = this._getRangeToRender(),
           startIndex = _this$_getRangeToRend2[0],
@@ -445,7 +408,6 @@ function createListComponent(_ref) {
             data: itemData,
             key: itemKey(_index, itemData),
             index: _index,
-            isScrolling: useIsScrolling ? isScrolling : undefined,
             style: this._getItemStyle(_index)
           }));
         }
@@ -461,8 +423,7 @@ function createListComponent(_ref) {
     itemData: undefined,
     outerTagName: 'div',
     overscanCountForward: 30,
-    overscanCountBackward: 10,
-    useIsScrolling: false
+    overscanCountBackward: 10
   }, _temp;
 } // NOTE: I considered further wrapping individual items with a pure ListItem component.
 // This would avoid ever calling the render function for the same index more than once,
@@ -582,16 +543,8 @@ function (_Component) {
       //Heavily inspired from https://github.com/marcj/css-element-queries/blob/master/src/ResizeSensor.js
       //and https://github.com/wnr/element-resize-detector/blob/master/src/detection-strategy/scroll.js
       //For more info http://www.backalleycoder.com/2013/03/18/cross-browser-event-based-element-resize-detection/#comment-244
-      if (typeof _this._resizeSensorExpand.current.scrollBy === 'function') {
-        _this._resizeSensorExpand.current.scrollBy(height + expandScrollDelta, width + expandScrollDelta);
-
-        _this._resizeSensorShrink.current.scrollBy(2 * height + shrinkScrollDelta, 2 * width + shrinkScrollDelta);
-      } else {
-        _this._resizeSensorExpand.current.scrollLeft = width + expandScrollDelta;
-        _this._resizeSensorExpand.current.scrollTop = height + expandScrollDelta;
-        _this._resizeSensorShrink.current.scrollTop = 2 * height + shrinkScrollDelta;
-        _this._resizeSensorShrink.current.scrollLeft = 2 * width + shrinkScrollDelta;
-      }
+      _this._resizeSensorExpand.current.scrollTop = height + expandScrollDelta;
+      _this._resizeSensorShrink.current.scrollTop = 2 * height + shrinkScrollDelta;
     };
 
     _this.scrollingDiv = function (event) {
@@ -1154,10 +1107,8 @@ createListComponent({
           itemData = _instance$props2.itemData,
           _instance$props2$item = _instance$props2.itemKey,
           itemKey = _instance$props2$item === void 0 ? defaultItemKey : _instance$props2$item,
-          useIsScrolling = _instance$props2.useIsScrolling,
           width = _instance$props2.width,
           skipResizeClass = _instance$props2.skipResizeClass;
-      var isScrolling = instance.state.isScrolling;
 
       var _instance$_getRangeTo3 = instance._getRangeToRender(),
           startIndex = _instance$_getRangeTo3[0],
@@ -1176,8 +1127,7 @@ createListComponent({
 
           var item = createElement(children, {
             data: itemData,
-            itemId: itemData[_index2],
-            isScrolling: useIsScrolling ? isScrolling : undefined
+            itemId: itemData[_index2]
           }); // Always wrap children in a ItemMeasurer to detect changes in size.
 
           items.push(createElement(ItemMeasurer, {
@@ -1213,7 +1163,7 @@ createListComponent({
   }
 });
 
-var IS_SCROLLING_DEBOUNCE_INTERVAL$1 = 150;
+var IS_SCROLLING_DEBOUNCE_INTERVAL = 150;
 
 var defaultItemKey$1 = function defaultItemKey(_ref) {
   var columnIndex = _ref.columnIndex,
@@ -1355,7 +1305,7 @@ function createGridComponent(_ref2) {
           cancelTimeout(_this._resetIsScrollingTimeoutId);
         }
 
-        _this._resetIsScrollingTimeoutId = requestTimeout(_this._resetIsScrolling, IS_SCROLLING_DEBOUNCE_INTERVAL$1);
+        _this._resetIsScrollingTimeoutId = requestTimeout(_this._resetIsScrolling, IS_SCROLLING_DEBOUNCE_INTERVAL);
       };
 
       _this._resetIsScrolling = function () {

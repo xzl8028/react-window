@@ -143,24 +143,8 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
     //and https://github.com/wnr/element-resize-detector/blob/master/src/detection-strategy/scroll.js
     //For more info http://www.backalleycoder.com/2013/03/18/cross-browser-event-based-element-resize-detection/#comment-244
 
-    if (typeof this._resizeSensorExpand.current.scrollBy === 'function') {
-      this._resizeSensorExpand.current.scrollBy(
-        height + expandScrollDelta,
-        width + expandScrollDelta
-      );
-
-      this._resizeSensorShrink.current.scrollBy(
-        2 * height + shrinkScrollDelta,
-        2 * width + shrinkScrollDelta
-      );
-    } else {
-      this._resizeSensorExpand.current.scrollLeft = width + expandScrollDelta;
-      this._resizeSensorExpand.current.scrollTop = height + expandScrollDelta;
-      this._resizeSensorShrink.current.scrollTop =
-        2 * height + shrinkScrollDelta;
-      this._resizeSensorShrink.current.scrollLeft =
-        2 * width + shrinkScrollDelta;
-    }
+    this._resizeSensorExpand.current.scrollTop = height + expandScrollDelta;
+    this._resizeSensorShrink.current.scrollTop = 2 * height + shrinkScrollDelta;
   };
 
   componentWillUnmount() {
