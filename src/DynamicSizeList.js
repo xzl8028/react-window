@@ -471,11 +471,9 @@ const DynamicSizeList = createListComponent({
         itemCount,
         itemData,
         itemKey = defaultItemKey,
-        useIsScrolling,
         width,
         skipResizeClass,
       } = instance.props;
-      const { isScrolling } = instance.state;
 
       const [startIndex, stopIndex] = instance._getRangeToRender();
       const items = [];
@@ -494,7 +492,6 @@ const DynamicSizeList = createListComponent({
           const item = createElement(children, {
             data: itemData,
             itemId: itemData[index],
-            isScrolling: useIsScrolling ? isScrolling : undefined,
           });
 
           // Always wrap children in a ItemMeasurer to detect changes in size.

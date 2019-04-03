@@ -12,7 +12,6 @@ export type Direction = 'horizontal' | 'vertical';
 export type RenderComponentProps<T> = {|
   data: T,
   index: number,
-  isScrolling?: boolean,
   style: Object,
 |};
 type RenderComponent<T> = React$ComponentType<$Shape<RenderComponentProps<T>>>;
@@ -54,12 +53,10 @@ export type Props<T> = {|
   overscanCountForward: number,
   overscanCountBackward: number,
   style?: Object,
-  useIsScrolling: boolean,
   width: number | string,
 |};
 
 type State = {|
-  isScrolling: boolean,
   scrollDirection: ScrollDirection,
   scrollOffset: number,
   scrollUpdateWasRequested: boolean,
@@ -98,8 +95,6 @@ type GetStopIndexForStartIndex = (
 type InitInstanceProps = (props: Props<any>, instance: any) => any;
 type ValidateProps = (props: Props<any>) => void;
 
-const IS_SCROLLING_DEBOUNCE_INTERVAL = 150;
-
 export const defaultItemKey = (index: number, data: any) => {
   return index;
 };
@@ -128,7 +123,6 @@ export default function createListComponent({
   return class List<T> extends PureComponent<Props<T>, State> {
     _instanceProps: any = initInstanceProps(this.props, this);
     _outerRef: ?HTMLDivElement;
-    _resetIsScrollingTimeoutId: TimeoutID | null = null;
     _scrollCorrectionInProgress = false;
     _atBottom = true;
 
@@ -139,11 +133,9 @@ export default function createListComponent({
       outerTagName: 'div',
       overscanCountForward: 30,
       overscanCountBackward: 10,
-      useIsScrolling: false,
     };
 
     state: State = {
-      isScrolling: false,
       scrollDirection: 'backward',
       scrollOffset:
         typeof this.props.initialScrollOffset === 'number'
@@ -183,7 +175,6 @@ export default function createListComponent({
         () => {
           element.scrollTop = scrollOffset;
           this._scrollCorrectionInProgress = false;
-          this._resetIsScrollingDebounced();
         }
       );
     }
@@ -236,10 +227,6 @@ export default function createListComponent({
     }
 
     componentWillUnmount() {
-      if (this._resetIsScrollingTimeoutId !== null) {
-        cancelTimeout(this._resetIsScrollingTimeoutId);
-      }
-
       this._unmountHook();
     }
 
@@ -254,7 +241,6 @@ export default function createListComponent({
         style,
         width,
       } = this.props;
-      const { isScrolling } = this.state;
 
       const onScroll =
         direction === 'vertical'
@@ -290,7 +276,6 @@ export default function createListComponent({
           ref: innerRef,
           style: {
             height: direction === 'horizontal' ? '100%' : estimatedTotalSize,
-            pointerEvents: isScrolling ? 'none' : '',
             width: direction === 'horizontal' ? estimatedTotalSize : '100%',
             position: 'relative',
             minHeight: '100%',
@@ -497,9 +482,7 @@ export default function createListComponent({
         itemCount,
         itemData,
         itemKey = defaultItemKey,
-        useIsScrolling,
       } = this.props;
-      const { isScrolling } = this.state;
 
       const [startIndex, stopIndex] = this._getRangeToRender();
 
@@ -511,7 +494,6 @@ export default function createListComponent({
               data: itemData,
               key: itemKey(index, itemData),
               index,
-              isScrolling: useIsScrolling ? isScrolling : undefined,
               style: this._getItemStyle(index),
             })
           );
@@ -526,18 +508,16 @@ export default function createListComponent({
         if (prevState.scrollOffset === scrollLeft) {
           // Scroll position may have been updated by cDM/cDU,
           // In which case we don't need to trigger another render,
-          // And we don't want to update state.isScrolling.
           return null;
         }
 
         return {
-          isScrolling: true,
           scrollDirection:
             prevState.scrollOffset < scrollLeft ? 'forward' : 'backward',
           scrollOffset: scrollLeft,
           scrollUpdateWasRequested: false,
         };
-      }, this._resetIsScrollingDebounced);
+      });
     };
 
     _onScrollVertical = (event: ScrollEvent): void => {
@@ -567,12 +547,10 @@ export default function createListComponent({
         if (prevState.scrollOffset === scrollTop) {
           // Scroll position may have been updated by cDM/cDU,
           // In which case we don't need to trigger another render,
-          // And we don't want to update state.isScrolling.
           return null;
         }
 
         return {
-          isScrolling: true,
           scrollDirection:
             prevState.scrollOffset < scrollTop ? 'forward' : 'backward',
           scrollOffset: scrollTop,
@@ -581,7 +559,7 @@ export default function createListComponent({
           scrollTop,
           scrollDelta: 0,
         };
-      }, this._resetIsScrollingDebounced);
+      });
     };
 
     _outerRefSetter = (ref: any): void => {
@@ -598,27 +576,6 @@ export default function createListComponent({
       ) {
         outerRef.current = ref;
       }
-    };
-
-    _resetIsScrollingDebounced = () => {
-      if (this._resetIsScrollingTimeoutId !== null) {
-        cancelTimeout(this._resetIsScrollingTimeoutId);
-      }
-
-      this._resetIsScrollingTimeoutId = requestTimeout(
-        this._resetIsScrolling,
-        IS_SCROLLING_DEBOUNCE_INTERVAL
-      );
-    };
-
-    _resetIsScrolling = () => {
-      this._resetIsScrollingTimeoutId = null;
-
-      this.setState({ isScrolling: false }, () => {
-        // Clear style cache after state update has been committed.
-        // This way we don't break pure sCU for items that don't use isScrolling param.
-        this._getItemStyleCache(-1);
-      });
     };
 
     // Intentionally placed after all other instance properties have been initialized,
