@@ -259,16 +259,17 @@ const DynamicSizeList = createListComponent({
       }
 
       const element = ((instance._outerRef: any): HTMLDivElement);
-      const delta = oldSize - newSize;
 
       if (
-        instanceProps.totalMeasuredSize + element.scrollTop >=
-        element.scrollHeight + delta - 10
+        element.offsetHeight + element.scrollTop >=
+        instanceProps.totalMeasuredSize - 10
       ) {
         generateOffsetMeasurements(props, index, instanceProps);
-        instance.forceUpdate();
         instance.scrollToItem('0', 'end');
+        instance.forceUpdate();
+        return;
       }
+      generateOffsetMeasurements(props, index, instanceProps);
     };
 
     instance._dataChange = () => {

@@ -884,13 +884,15 @@ createListComponent({
       }
 
       var element = instance._outerRef;
-      var delta = oldSize - newSize;
 
-      if (instanceProps.totalMeasuredSize + element.scrollTop >= element.scrollHeight + delta - 10) {
+      if (element.offsetHeight + element.scrollTop >= instanceProps.totalMeasuredSize - 10) {
         generateOffsetMeasurements(props, index, instanceProps);
-        instance.forceUpdate();
         instance.scrollToItem('0', 'end');
+        instance.forceUpdate();
+        return;
       }
+
+      generateOffsetMeasurements(props, index, instanceProps);
     };
 
     instance._dataChange = function () {
