@@ -2,8 +2,9 @@
 
 import memoizeOne from 'memoize-one';
 import { createElement, PureComponent } from 'react';
-import { cancelTimeout, requestTimeout } from './timer';
+import isBrowserChrome from './isChrome';
 
+const isChrome = isBrowserChrome();
 export type ScrollToAlign = 'auto' | 'center' | 'start' | 'end';
 
 type itemSize = number | ((index: number) => number);
@@ -125,7 +126,7 @@ export default function createListComponent({
     _outerRef: ?HTMLDivElement;
     _scrollCorrectionInProgress = false;
     _atBottom = true;
-
+    _scrollByCorrection = null;
     static defaultProps = {
       direction: 'vertical',
       innerTagName: 'div',
@@ -162,8 +163,18 @@ export default function createListComponent({
       return null;
     }
 
-    scrollTo(scrollOffset: number): void {
+    scrollBy = (scrollOffset, scrollBy) => () => {
       const element = ((this._outerRef: any): HTMLDivElement);
+      if (typeof element.scrollBy === 'function' && scrollBy) {
+        element.scrollBy(0, scrollBy);
+      } else {
+        element.scrollTop = scrollOffset;
+      }
+
+      this._scrollCorrectionInProgress = false;
+    };
+
+    scrollTo(scrollOffset: number, scrollByValue: number): void {
       this._scrollCorrectionInProgress = true;
       this.setState(
         prevState => ({
@@ -173,8 +184,16 @@ export default function createListComponent({
           scrollUpdateWasRequested: true,
         }),
         () => {
-          element.scrollTop = scrollOffset;
-          this._scrollCorrectionInProgress = false;
+          if (isChrome) {
+            if (this._scrollByCorrection) {
+              window.cancelAnimationFrame(this._scrollByCorrection);
+            }
+            this._scrollByCorrection = window.requestAnimationFrame(
+              this.scrollBy(scrollOffset, scrollByValue)
+            );
+          } else {
+            this.scrollBy(scrollOffset, scrollByValue)();
+          }
         }
       );
     }
@@ -209,7 +228,25 @@ export default function createListComponent({
 
     componentDidUpdate(prevProps, prevState) {
       if (this.state.scrolledToInitIndex) {
-        this._callPropsCallbacks();
+        const {
+          scrollDirection,
+          scrollOffset,
+          scrollUpdateWasRequested,
+        } = this.state;
+
+        const {
+          prevScrollDirection,
+          prevScrollOffset,
+          prevScrollUpdateWasRequested,
+        } = prevState;
+
+        if (
+          scrollDirection !== prevScrollDirection ||
+          scrollOffset !== prevScrollOffset ||
+          scrollUpdateWasRequested !== prevScrollUpdateWasRequested
+        ) {
+          this._callPropsCallbacks();
+        }
       }
 
       this._commitHook();
@@ -224,6 +261,10 @@ export default function createListComponent({
       if (prevState.scrolledToInitIndex !== this.state.scrolledToInitIndex) {
         this._dataChange(); // though this is not data change we are checking for first load change
       }
+
+      if (prevProps.width !== this.props.width) {
+        this._widthChange(prevProps.height, prevState.scrollOffset);
+      }
     }
 
     componentWillUnmount() {
@@ -234,12 +275,10 @@ export default function createListComponent({
       const {
         className,
         direction,
-        height,
         innerRef,
         innerTagName,
         outerTagName,
         style,
-        width,
       } = this.props;
 
       const onScroll =
@@ -249,13 +288,6 @@ export default function createListComponent({
 
       const items = this._renderItems();
 
-      // Read this value AFTER items have been created,
-      // So their actual sizes (if variable) are taken into consideration.
-      const estimatedTotalSize = getEstimatedTotalSize(
-        this.props,
-        this._instanceProps
-      );
-
       return createElement(
         ((outerTagName: any): string),
         {
@@ -263,23 +295,15 @@ export default function createListComponent({
           onScroll,
           ref: this._outerRefSetter,
           style: {
-            height,
-            width,
-            overflow: 'auto',
             WebkitOverflowScrolling: 'touch',
-            willChange: 'transform',
+            overflowY: 'auto',
+            overflowAnchor: 'none',
             ...style,
           },
         },
         createElement(((innerTagName: any): string), {
           children: items,
           ref: innerRef,
-          style: {
-            height: direction === 'horizontal' ? '100%' : estimatedTotalSize,
-            width: direction === 'horizontal' ? estimatedTotalSize : '100%',
-            position: 'relative',
-            minHeight: '100%',
-          },
         })
       );
     }
@@ -348,6 +372,7 @@ export default function createListComponent({
           scrollOffset,
           scrollUpdateWasRequested,
         } = this.state;
+        console.log(this._scrollCorrectionInProgress, 'onScroll');
         this._callOnScroll(
           scrollDirection,
           scrollOffset,
@@ -385,12 +410,11 @@ export default function createListComponent({
         style = itemStyleCache[itemData[index]];
       } else {
         itemStyleCache[itemData[index]] = style = {
-          position: 'absolute',
           left:
             direction === 'horizontal'
               ? getItemOffset(this.props, index, this._instanceProps)
               : 0,
-          bottom:
+          top:
             direction === 'vertical'
               ? getItemOffset(this.props, index, this._instanceProps)
               : 0,

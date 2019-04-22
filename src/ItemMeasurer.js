@@ -109,6 +109,7 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
   _resizeObserver: ResizeObserver | null = null;
   _resizeSensorExpand = React.createRef();
   _resizeSensorShrink = React.createRef();
+  _positionScrollbarsRef = null;
 
   componentDidMount() {
     const node = ((findDOMNode(this): any): HTMLElement);
@@ -116,6 +117,7 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
     // Force sync measure for the initial mount.
     // This is necessary to support the DynamicSizeList layout logic.
     this._measureItem(true);
+
     if (this.props.size) {
       // Don't wait for positioning scrollbars when we have size
       // This is needed triggering an event for remounting a post
@@ -124,10 +126,6 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
   }
 
   componentDidUpdate(prevProps) {
-    if (prevProps.width !== this.props.width) {
-      this._onResize();
-    }
-
     if (
       (prevProps.size === 0 && this.props.size !== 0) ||
       prevProps.size !== this.props.size
@@ -142,15 +140,19 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
     //Heavily inspired from https://github.com/marcj/css-element-queries/blob/master/src/ResizeSensor.js
     //and https://github.com/wnr/element-resize-detector/blob/master/src/detection-strategy/scroll.js
     //For more info http://www.backalleycoder.com/2013/03/18/cross-browser-event-based-element-resize-detection/#comment-244
-
-    this._resizeSensorExpand.current.scrollTop = height + expandScrollDelta;
-    this._resizeSensorShrink.current.scrollTop = 2 * height + shrinkScrollDelta;
+    if (this._positionScrollbarsRef) {
+      window.cancelAnimationFrame(this._positionScrollbarsRef);
+    }
+    this._positionScrollbarsRef = window.requestAnimationFrame(() => {
+      this._resizeSensorExpand.current.scrollTop = height + expandScrollDelta;
+      this._resizeSensorShrink.current.scrollTop =
+        2 * height + shrinkScrollDelta;
+    });
   };
 
   componentWillUnmount() {
-    const { onUnmount, itemId, index } = this.props;
-    if (onUnmount) {
-      onUnmount(itemId, index);
+    if (this._positionScrollbarsRef) {
+      window.cancelAnimationFrame(this._positionScrollbarsRef);
     }
   }
 
@@ -168,11 +170,11 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
       left: '0',
       top: '0',
       height: `${this.props.size + expandScrollDelta}px`,
-      width: `${this.props.width + expandScrollDelta}px`,
+      width: '100%',
     };
 
     const renderItem = (
-      <div style={this.props.style}>
+      <div style={{ position: 'relative' }}>
         {item}
         <div style={scrollableContainerStyles}>
           <div dir="ltr" style={scrollableWrapperStyle}>
