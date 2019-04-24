@@ -234,10 +234,12 @@ const DynamicSizeList = createListComponent({
       atBottom: true,
     };
 
+    let mountingCorrections = 0;
+    let correctedInstances = 0;
     const handleNewMeasurements: HandleNewMeasurements = (
       key: number,
       newSize: number,
-      isFirstMeasureAfterMounting: boolean
+      forceScrollCorrection: boolean
     ) => {
       const { itemSizeMap } = instanceProps;
       const { itemData } = instance.props;
@@ -261,15 +263,87 @@ const DynamicSizeList = createListComponent({
       const element = ((instance._outerRef: any): HTMLDivElement);
 
       if (
-        element.offsetHeight + element.scrollTop >=
+        instance.props.height + element.scrollTop >=
         instanceProps.totalMeasuredSize - 10
       ) {
         generateOffsetMeasurements(props, index, instanceProps);
-        instance.scrollToItem('0', 'end');
+        instance.scrollToItem(0, 'end');
         instance.forceUpdate();
         return;
       }
+
+      if (forceScrollCorrection) {
+        const delta = newSize - oldSize;
+        const [, , visibleStartIndex] = instance._getRangeToRender(
+          element.scrollTop
+        );
+        generateOffsetMeasurements(props, index, instanceProps);
+        if (index < visibleStartIndex + 1) {
+          return;
+        }
+
+        instance._scrollCorrectionInProgress = true;
+
+        instance.setState(
+          prevState => {
+            let deltaValue;
+            if (mountingCorrections === 0) {
+              deltaValue = delta;
+            } else {
+              deltaValue = prevState.scrollDelta + delta;
+            }
+            mountingCorrections++;
+            const newOffset = prevState.scrollOffset + delta;
+            return {
+              scrollOffset: newOffset,
+              scrollDelta: deltaValue,
+            };
+          },
+          () => {
+            // $FlowFixMe Property scrollBy is missing in HTMLDivElement
+            correctedInstances++;
+            if (mountingCorrections === correctedInstances) {
+              correctScroll();
+            }
+          }
+        );
+        return;
+      }
+
       generateOffsetMeasurements(props, index, instanceProps);
+    };
+
+    const correctScroll = () => {
+      const { scrollOffset } = instance.state;
+      const element = ((instance._outerRef: any): HTMLDivElement);
+      if (element) {
+        element.scrollTop = scrollOffset;
+        instance._scrollCorrectionInProgress = false;
+        correctedInstances = 0;
+        mountingCorrections = 0;
+      }
+    };
+
+    const onItemRowUnmount = (itemId, index) => {
+      const { props } = instance;
+      if (props.itemData[index] === itemId) {
+        return;
+      }
+      const doesItemExist = props.itemData.includes(itemId);
+      if (!doesItemExist) {
+        delete instanceProps.itemSizeMap[itemId];
+        delete instanceProps.itemOffsetMap[itemId];
+        const element = instance._outerRef;
+
+        var atBottom =
+          element.offsetHeight + element.scrollTop >=
+          instanceProps.totalMeasuredSize - 10;
+        generateOffsetMeasurements(props, index, instanceProps);
+        if (atBottom) {
+          instance.scrollToItem(0, 'end');
+        }
+        instance.forceUpdate();
+      }
     };
 
     instance._dataChange = () => {
@@ -316,11 +390,11 @@ const DynamicSizeList = createListComponent({
         itemCount,
         itemData,
         itemKey = defaultItemKey,
-        width,
         skipResizeClass,
       } = instance.props;
+      const width = instance.innerRefWidth;
+      let [startIndex, stopIndex] = instance._getRangeToRender();
 
-      const [startIndex, stopIndex] = instance._getRangeToRender();
       const items = [];
       if (itemCount > 0) {
         for (let index = itemCount - 1; index >= 0; index--) {
@@ -330,10 +404,23 @@ const DynamicSizeList = createListComponent({
             instanceProps
           );
 
+          const [
+            localOlderPostsToRenderStartIndex,
+            localOlderPostsToRenderStopIndex,
+          ] = instance.state.localOlderPostsToRender;
+
+          const isItemInLocalPosts =
+            index >= localOlderPostsToRenderStartIndex &&
+            index < localOlderPostsToRenderStopIndex + 1 &&
+            localOlderPostsToRenderStartIndex === stopIndex + 1;
+
           // It's important to read style after fetching item metadata.
           // getItemMetadata() will clear stale styles.
           const style = instance._getItemStyle(index);
-          if (index >= startIndex && index < stopIndex + 1) {
+          if (
+            (index >= startIndex && index < stopIndex + 1) ||
+            isItemInLocalPosts
+          ) {
             const item = createElement(children, {
               data: itemData,
               itemId: itemData[index],
@@ -351,6 +438,7 @@ const DynamicSizeList = createListComponent({
                 itemId: itemKey(index),
                 width,
                 skipResizeClass,
+                onUnmount: onItemRowUnmount,
               })
             );
           } else {
