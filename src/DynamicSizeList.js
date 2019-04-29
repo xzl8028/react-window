@@ -159,7 +159,7 @@ const DynamicSizeList = createListComponent({
       case 'end':
         return maxOffset;
       case 'center':
-        return Math.round(minOffset - height / 2);
+        return Math.round(minOffset - height / 2 + itemMetadata.size / 2);
       case 'auto':
       default:
         if (scrollOffset >= minOffset && scrollOffset <= maxOffset) {
