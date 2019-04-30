@@ -2,8 +2,9 @@
 
 import memoizeOne from 'memoize-one';
 import { createElement, PureComponent } from 'react';
-import { cancelTimeout, requestTimeout } from './timer';
+import isBrowserChrome from './isChrome';
 
+const isChrome = isBrowserChrome();
 export type ScrollToAlign = 'auto' | 'center' | 'start' | 'end';
 
 type itemSize = number | ((index: number) => number);
@@ -54,6 +55,7 @@ export type Props<T> = {|
   overscanCountBackward: number,
   style?: Object,
   width: number | string,
+  innerListStyle?: object,
 |};
 
 type State = {|
@@ -125,7 +127,7 @@ export default function createListComponent({
     _outerRef: ?HTMLDivElement;
     _scrollCorrectionInProgress = false;
     _atBottom = true;
-
+    _scrollByCorrection = null;
     static defaultProps = {
       direction: 'vertical',
       innerTagName: 'div',
@@ -144,6 +146,7 @@ export default function createListComponent({
       scrollUpdateWasRequested: false,
       scrollDelta: 0,
       scrollHeight: 0,
+      localOlderPostsToRender: [],
     };
 
     // Always use explicit constructor for React components.
@@ -162,8 +165,22 @@ export default function createListComponent({
       return null;
     }
 
-    scrollTo(scrollOffset: number): void {
+    scrollBy = (scrollOffset, scrollBy) => () => {
       const element = ((this._outerRef: any): HTMLDivElement);
+      if (typeof element.scrollBy === 'function' && scrollBy) {
+        element.scrollBy(0, scrollBy);
+      } else if (scrollOffset) {
+        element.scrollTop = scrollOffset;
+      }
+
+      this._scrollCorrectionInProgress = false;
+    };
+
+    scrollTo(
+      scrollOffset: number,
+      scrollByValue: number,
+      useAnimationFrame: boolean = false
+    ): void {
       this._scrollCorrectionInProgress = true;
       this.setState(
         prevState => ({
@@ -173,14 +190,31 @@ export default function createListComponent({
           scrollUpdateWasRequested: true,
         }),
         () => {
-          element.scrollTop = scrollOffset;
-          this._scrollCorrectionInProgress = false;
+          if (isChrome && useAnimationFrame) {
+            if (this._scrollByCorrection) {
+              window.cancelAnimationFrame(this._scrollByCorrection);
+            }
+            this._scrollByCorrection = window.requestAnimationFrame(
+              this.scrollBy(scrollOffset, scrollByValue)
+            );
+          } else {
+            this.scrollBy(scrollOffset, scrollByValue)();
+          }
         }
       );
     }
 
     scrollToItem(index: number, align: ScrollToAlign = 'auto'): void {
       const { scrollOffset } = this.state;
+
+      //Ideally the below scrollTo works fine but firefox has 6px issue and stays 6px from bottom when corrected
+      //so manually keeping scroll position bottom for now
+      const element = ((this._outerRef: any): HTMLDivElement);
+      if (index === 0 && align === 'end') {
+        this.scrollTo(element.scrollHeight - this.props.height);
+        return;
+      }
+
       this.scrollTo(
         getOffsetForIndexAndAlignment(
           this.props,
@@ -207,9 +241,45 @@ export default function createListComponent({
       this._commitHook();
     }
 
-    componentDidUpdate(prevProps, prevState) {
+    getSnapshotBeforeUpdate(prevProps, prevState) {
+      if (
+        prevState.localOlderPostsToRender[0] !==
+          this.state.localOlderPostsToRender[0] ||
+        prevState.localOlderPostsToRender[1] !==
+          this.state.localOlderPostsToRender[1]
+      ) {
+        const element = this._outerRef;
+        const previousScrollTop = element.scrollTop;
+        const previousScrollHeight = element.scrollHeight;
+        return {
+          previousScrollTop,
+          previousScrollHeight,
+        };
+      }
+      return null;
+    }
+
+    componentDidUpdate(prevProps, prevState, snapshot) {
       if (this.state.scrolledToInitIndex) {
-        this._callPropsCallbacks();
+        const {
+          scrollDirection,
+          scrollOffset,
+          scrollUpdateWasRequested,
+        } = this.state;
+
+        const {
+          prevScrollDirection,
+          prevScrollOffset,
+          prevScrollUpdateWasRequested,
+        } = prevState;
+
+        if (
+          scrollDirection !== prevScrollDirection ||
+          scrollOffset !== prevScrollOffset ||
+          scrollUpdateWasRequested !== prevScrollUpdateWasRequested
+        ) {
+          this._callPropsCallbacks();
+        }
       }
 
       this._commitHook();
@@ -224,6 +294,30 @@ export default function createListComponent({
       if (prevState.scrolledToInitIndex !== this.state.scrolledToInitIndex) {
         this._dataChange(); // though this is not data change we are checking for first load change
       }
+
+      if (prevProps.width !== this.props.width) {
+        this.innerRefWidth = this.props.innerRef.current.clientWidth;
+        this._widthChange(prevProps.height, prevState.scrollOffset);
+      }
+
+      if (
+        prevState.localOlderPostsToRender[0] !==
+          this.state.localOlderPostsToRender[0] ||
+        prevState.localOlderPostsToRender[1] !==
+          this.state.localOlderPostsToRender[1]
+      ) {
+        const postlistScrollHeight = this._outerRef.scrollHeight;
+
+        const scrollValue =
+          snapshot.previousScrollTop +
+          (postlistScrollHeight - snapshot.previousScrollHeight);
+
+        this.scrollTo(
+          scrollValue,
+          scrollValue - snapshot.previousScrollTop,
+          false
+        );
+      }
     }
 
     componentWillUnmount() {
@@ -234,12 +328,11 @@ export default function createListComponent({
       const {
         className,
         direction,
-        height,
         innerRef,
         innerTagName,
         outerTagName,
         style,
-        width,
+        innerListStyle,
       } = this.props;
 
       const onScroll =
@@ -249,13 +342,6 @@ export default function createListComponent({
 
       const items = this._renderItems();
 
-      // Read this value AFTER items have been created,
-      // So their actual sizes (if variable) are taken into consideration.
-      const estimatedTotalSize = getEstimatedTotalSize(
-        this.props,
-        this._instanceProps
-      );
-
       return createElement(
         ((outerTagName: any): string),
         {
@@ -263,23 +349,18 @@ export default function createListComponent({
           onScroll,
           ref: this._outerRefSetter,
           style: {
-            height,
-            width,
-            overflow: 'auto',
             WebkitOverflowScrolling: 'touch',
+            overflowY: 'auto',
+            overflowAnchor: 'none',
             willChange: 'transform',
+            width: '100%',
             ...style,
           },
         },
         createElement(((innerTagName: any): string), {
           children: items,
           ref: innerRef,
-          style: {
-            height: direction === 'horizontal' ? '100%' : estimatedTotalSize,
-            width: direction === 'horizontal' ? estimatedTotalSize : '100%',
-            position: 'relative',
-            minHeight: '100%',
-          },
+          style: innerListStyle,
         })
       );
     }
@@ -324,8 +405,14 @@ export default function createListComponent({
     );
 
     _callPropsCallbacks() {
+      const { itemCount } = this.props;
+      const {
+        scrollDirection,
+        scrollOffset,
+        scrollUpdateWasRequested,
+      } = this.state;
+
       if (typeof this.props.onItemsRendered === 'function') {
-        const { itemCount } = this.props;
         if (itemCount > 0) {
           const [
             overscanStartIndex,
@@ -333,21 +420,45 @@ export default function createListComponent({
             visibleStartIndex,
             visibleStopIndex,
           ] = this._getRangeToRender();
+
           this._callOnItemsRendered(
             overscanStartIndex,
             overscanStopIndex,
             visibleStartIndex,
             visibleStopIndex
           );
+
+          if (
+            scrollDirection === 'backward' &&
+            scrollOffset < 1000 &&
+            overscanStopIndex !== itemCount - 1
+          ) {
+            const sizeOfNextElement = getItemSize(
+              this.props,
+              overscanStopIndex + 1,
+              this._instanceProps
+            ).size;
+            if (!sizeOfNextElement && this.state.scrolledToInitIndex) {
+              this.setState(prevState => {
+                if (
+                  prevState.localOlderPostsToRender &&
+                  prevState.localOlderPostsToRender[0] !== overscanStopIndex + 1
+                ) {
+                  return {
+                    localOlderPostsToRender: [
+                      overscanStopIndex + 1,
+                      overscanStopIndex + 26,
+                    ],
+                  };
+                }
+                return null;
+              });
+            }
+          }
         }
       }
 
       if (typeof this.props.onScroll === 'function') {
-        const {
-          scrollDirection,
-          scrollOffset,
-          scrollUpdateWasRequested,
-        } = this.state;
         this._callOnScroll(
           scrollDirection,
           scrollOffset,
@@ -385,12 +496,11 @@ export default function createListComponent({
         style = itemStyleCache[itemData[index]];
       } else {
         itemStyleCache[itemData[index]] = style = {
-          position: 'absolute',
           left:
             direction === 'horizontal'
               ? getItemOffset(this.props, index, this._instanceProps)
               : 0,
-          bottom:
+          top:
             direction === 'vertical'
               ? getItemOffset(this.props, index, this._instanceProps)
               : 0,
@@ -450,20 +560,27 @@ export default function createListComponent({
       // Overscan by one item in each direction so that tab/focus works.
       // If there isn't at least one extra item, tab loops back around.
       const overscanBackward =
-        scrollDirection === 'forward'
-          ? overscanCountBackward
-          : Math.max(1, overscanCountForward);
-
-      const overscanForward =
         scrollDirection === 'backward'
           ? overscanCountBackward
           : Math.max(1, overscanCountForward);
 
-      const minValue = Math.max(0, startIndex - overscanForward);
-      const maxValue = Math.max(
+      const overscanForward =
+        scrollDirection === 'forward'
+          ? overscanCountBackward
+          : Math.max(1, overscanCountForward);
+
+      const minValue = Math.max(0, stopIndex - overscanBackward);
+      let maxValue = Math.max(
         0,
-        Math.min(itemCount - 1, stopIndex + overscanBackward)
+        Math.min(itemCount - 1, startIndex + overscanForward)
       );
+
+      while (
+        !getItemSize(this.props, maxValue, this._instanceProps) &&
+        maxValue > 0
+      ) {
+        maxValue--;
+      }
 
       if (maxValue < 2 * overscanCountBackward && maxValue < itemCount) {
         return [
@@ -564,7 +681,7 @@ export default function createListComponent({
 
     _outerRefSetter = (ref: any): void => {
       const { outerRef } = this.props;
-
+      this.innerRefWidth = this.props.innerRef.current.clientWidth;
       this._outerRef = ((ref: any): HTMLDivElement);
 
       if (typeof outerRef === 'function') {

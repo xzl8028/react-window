@@ -5,34 +5,38 @@ import memoizeOne from 'memoize-one';
 import React, { createElement, PureComponent, Component } from 'react';
 import { findDOMNode } from 'react-dom';
 
-// Animation frame based implementation of setTimeout.
-// Inspired by Joe Lambert, https://gist.github.com/joelambert/1002116#file-requesttimeout-js
-var hasNativePerformanceNow = typeof performance === 'object' && typeof performance.now === 'function';
-var now = hasNativePerformanceNow ? function () {
-  return performance.now();
-} : function () {
-  return Date.now();
-};
-function cancelTimeout(timeoutID) {
-  cancelAnimationFrame(timeoutID.id);
-}
-function requestTimeout(callback, delay) {
-  var start = now();
+// From https://stackoverflow.com/a/13348618/2902013
+// please note,
+// that IE11 now returns undefined again for window.chrome
+// and new Opera 30 outputs true for window.chrome
+// but needs to check if window.opr is not undefined
+// and new IE Edge outputs to true now for window.chrome
+// and if not iOS Chrome check
+// so use the below updated condition
+// we return true for electron as well as electron also does not immediately correct scroll
+// similar to chrome and loads another set of posts.
+// chromimum seems to work fine so mostly in near future chrome fixes the issue
+function isBrowserChrome() {
+  var isChromium = window.chrome;
+  var winNav = window.navigator;
+  var vendorName = winNav.vendor;
+  var isOpera = typeof window.opr !== 'undefined';
+  var isIEedge = winNav.userAgent.indexOf('Edge') > -1;
+  var isIOSChrome = winNav.userAgent.match('CriOS');
+  var isElectron = winNav.userAgent.toLowerCase().indexOf(' electron/') > -1;
 
-  function tick() {
-    if (now() - start >= delay) {
-      callback.call(null);
-    } else {
-      timeoutID.id = requestAnimationFrame(tick);
-    }
+  if (isIOSChrome || isElectron) {
+    return true;
+  } else if (isChromium !== null && typeof isChromium !== 'undefined' && vendorName === 'Google Inc.' && isOpera === false && isIEedge === false) {
+    return true;
   }
 
-  var timeoutID = {
-    id: requestAnimationFrame(tick)
-  };
-  return timeoutID;
+  return false;
 }
 
+var isChrome =
+/*#__PURE__*/
+isBrowserChrome();
 var defaultItemKey = function defaultItemKey(index, data) {
   return index;
 };
@@ -64,13 +68,30 @@ function createListComponent(_ref) {
       _this._outerRef = void 0;
       _this._scrollCorrectionInProgress = false;
       _this._atBottom = true;
+      _this._scrollByCorrection = null;
       _this.state = {
         scrollDirection: 'backward',
         scrollOffset: typeof _this.props.initialScrollOffset === 'number' ? _this.props.initialScrollOffset : 0,
         scrollUpdateWasRequested: false,
         scrollDelta: 0,
-        scrollHeight: 0
+        scrollHeight: 0,
+        localOlderPostsToRender: []
       };
+
+      _this.scrollBy = function (scrollOffset, scrollBy) {
+        return function () {
+          var element = _this._outerRef;
+
+          if (typeof element.scrollBy === 'function' && scrollBy) {
+            element.scrollBy(0, scrollBy);
+          } else if (scrollOffset) {
+            element.scrollTop = scrollOffset;
+          }
+
+          _this._scrollCorrectionInProgress = false;
+        };
+      };
+
       _this._callOnItemsRendered = void 0;
       _this._callOnItemsRendered = memoizeOne(function (overscanStartIndex, overscanStopIndex, visibleStartIndex, visibleStopIndex) {
         return _this.props.onItemsRendered({
@@ -104,9 +125,8 @@ function createListComponent(_ref) {
           style = itemStyleCache[itemData[index]];
         } else {
           itemStyleCache[itemData[index]] = style = {
-            position: 'absolute',
             left: direction === 'horizontal' ? getItemOffset(_this.props, index, _this._instanceProps) : 0,
-            bottom: direction === 'vertical' ? getItemOffset(_this.props, index, _this._instanceProps) : 0,
+            top: direction === 'vertical' ? getItemOffset(_this.props, index, _this._instanceProps) : 0,
             height: direction === 'vertical' ? getItemSize(_this.props, index, _this._instanceProps) : '100%',
             width: direction === 'horizontal' ? getItemSize(_this.props, index, _this._instanceProps) : '100%'
           };
@@ -187,6 +207,7 @@ function createListComponent(_ref) {
 
       _this._outerRefSetter = function (ref) {
         var outerRef = _this.props.outerRef;
+        _this.innerRefWidth = _this.props.innerRef.current.clientWidth;
         _this._outerRef = ref;
 
         if (typeof outerRef === 'function') {
@@ -208,10 +229,13 @@ function createListComponent(_ref) {
 
     var _proto = List.prototype;
 
-    _proto.scrollTo = function scrollTo(scrollOffset) {
+    _proto.scrollTo = function scrollTo(scrollOffset, scrollByValue, useAnimationFrame) {
       var _this2 = this;
 
-      var element = this._outerRef;
+      if (useAnimationFrame === void 0) {
+        useAnimationFrame = false;
+      }
+
       this._scrollCorrectionInProgress = true;
       this.setState(function (prevState) {
         return {
@@ -220,8 +244,15 @@ function createListComponent(_ref) {
           scrollUpdateWasRequested: true
         };
       }, function () {
-        element.scrollTop = scrollOffset;
-        _this2._scrollCorrectionInProgress = false;
+        if (isChrome && useAnimationFrame) {
+          if (_this2._scrollByCorrection) {
+            window.cancelAnimationFrame(_this2._scrollByCorrection);
+          }
+
+          _this2._scrollByCorrection = window.requestAnimationFrame(_this2.scrollBy(scrollOffset, scrollByValue));
+        } else {
+          _this2.scrollBy(scrollOffset, scrollByValue)();
+        }
       });
     };
 
@@ -230,7 +261,16 @@ function createListComponent(_ref) {
         align = 'auto';
       }
 
-      var scrollOffset = this.state.scrollOffset;
+      var scrollOffset = this.state.scrollOffset; //Ideally the below scrollTo works fine but firefox has 6px issue and stays 6px from bottom when corrected
+      //so manually keeping scroll position bottom for now
+
+      var element = this._outerRef;
+
+      if (index === 0 && align === 'end') {
+        this.scrollTo(element.scrollHeight - this.props.height);
+        return;
+      }
+
       this.scrollTo(getOffsetForIndexAndAlignment(this.props, index, align, scrollOffset, this._instanceProps));
     };
 
@@ -252,9 +292,33 @@ function createListComponent(_ref) {
       this._commitHook();
     };
 
-    _proto.componentDidUpdate = function componentDidUpdate(prevProps, prevState) {
+    _proto.getSnapshotBeforeUpdate = function getSnapshotBeforeUpdate(prevProps, prevState) {
+      if (prevState.localOlderPostsToRender[0] !== this.state.localOlderPostsToRender[0] || prevState.localOlderPostsToRender[1] !== this.state.localOlderPostsToRender[1]) {
+        var element = this._outerRef;
+        var previousScrollTop = element.scrollTop;
+        var previousScrollHeight = element.scrollHeight;
+        return {
+          previousScrollTop: previousScrollTop,
+          previousScrollHeight: previousScrollHeight
+        };
+      }
+
+      return null;
+    };
+
+    _proto.componentDidUpdate = function componentDidUpdate(prevProps, prevState, snapshot) {
       if (this.state.scrolledToInitIndex) {
-        this._callPropsCallbacks();
+        var _this$state = this.state,
+            _scrollDirection = _this$state.scrollDirection,
+            _scrollOffset = _this$state.scrollOffset,
+            _scrollUpdateWasRequested = _this$state.scrollUpdateWasRequested;
+        var prevScrollDirection = prevState.prevScrollDirection,
+            prevScrollOffset = prevState.prevScrollOffset,
+            prevScrollUpdateWasRequested = prevState.prevScrollUpdateWasRequested;
+
+        if (_scrollDirection !== prevScrollDirection || _scrollOffset !== prevScrollOffset || _scrollUpdateWasRequested !== prevScrollUpdateWasRequested) {
+          this._callPropsCallbacks();
+        }
       }
 
       this._commitHook();
@@ -271,6 +335,18 @@ function createListComponent(_ref) {
         this._dataChange(); // though this is not data change we are checking for first load change
 
       }
+
+      if (prevProps.width !== this.props.width) {
+        this.innerRefWidth = this.props.innerRef.current.clientWidth;
+
+        this._widthChange(prevProps.height, prevState.scrollOffset);
+      }
+
+      if (prevState.localOlderPostsToRender[0] !== this.state.localOlderPostsToRender[0] || prevState.localOlderPostsToRender[1] !== this.state.localOlderPostsToRender[1]) {
+        var postlistScrollHeight = this._outerRef.scrollHeight;
+        var scrollValue = snapshot.previousScrollTop + (postlistScrollHeight - snapshot.previousScrollHeight);
+        this.scrollTo(scrollValue, scrollValue - snapshot.previousScrollTop, false);
+      }
     };
 
     _proto.componentWillUnmount = function componentWillUnmount() {
@@ -281,46 +357,41 @@ function createListComponent(_ref) {
       var _this$props3 = this.props,
           className = _this$props3.className,
           direction = _this$props3.direction,
-          height = _this$props3.height,
           innerRef = _this$props3.innerRef,
           innerTagName = _this$props3.innerTagName,
           outerTagName = _this$props3.outerTagName,
           style = _this$props3.style,
-          width = _this$props3.width;
+          innerListStyle = _this$props3.innerListStyle;
       var onScroll = direction === 'vertical' ? this._onScrollVertical : this._onScrollHorizontal;
 
-      var items = this._renderItems(); // Read this value AFTER items have been created,
-      // So their actual sizes (if variable) are taken into consideration.
+      var items = this._renderItems();
 
-
-      var estimatedTotalSize = getEstimatedTotalSize(this.props, this._instanceProps);
       return createElement(outerTagName, {
         className: className,
         onScroll: onScroll,
         ref: this._outerRefSetter,
         style: _extends({
-          height: height,
-          width: width,
-          overflow: 'auto',
           WebkitOverflowScrolling: 'touch',
-          willChange: 'transform'
+          overflowY: 'auto',
+          overflowAnchor: 'none',
+          willChange: 'transform',
+          width: '100%'
         }, style)
       }, createElement(innerTagName, {
         children: items,
         ref: innerRef,
-        style: {
-          height: direction === 'horizontal' ? '100%' : estimatedTotalSize,
-          width: direction === 'horizontal' ? estimatedTotalSize : '100%',
-          position: 'relative',
-          minHeight: '100%'
-        }
+        style: innerListStyle
       }));
     };
 
     _proto._callPropsCallbacks = function _callPropsCallbacks() {
-      if (typeof this.props.onItemsRendered === 'function') {
-        var itemCount = this.props.itemCount;
+      var itemCount = this.props.itemCount;
+      var _this$state2 = this.state,
+          scrollDirection = _this$state2.scrollDirection,
+          scrollOffset = _this$state2.scrollOffset,
+          scrollUpdateWasRequested = _this$state2.scrollUpdateWasRequested;
 
+      if (typeof this.props.onItemsRendered === 'function') {
         if (itemCount > 0) {
           var _this$_getRangeToRend = this._getRangeToRender(),
               _overscanStartIndex = _this$_getRangeToRend[0],
@@ -329,16 +400,27 @@ function createListComponent(_ref) {
               _visibleStopIndex = _this$_getRangeToRend[3];
 
           this._callOnItemsRendered(_overscanStartIndex, _overscanStopIndex, _visibleStartIndex, _visibleStopIndex);
+
+          if (scrollDirection === 'backward' && scrollOffset < 1000 && _overscanStopIndex !== itemCount - 1) {
+            var sizeOfNextElement = getItemSize(this.props, _overscanStopIndex + 1, this._instanceProps).size;
+
+            if (!sizeOfNextElement && this.state.scrolledToInitIndex) {
+              this.setState(function (prevState) {
+                if (prevState.localOlderPostsToRender && prevState.localOlderPostsToRender[0] !== _overscanStopIndex + 1) {
+                  return {
+                    localOlderPostsToRender: [_overscanStopIndex + 1, _overscanStopIndex + 26]
+                  };
+                }
+
+                return null;
+              });
+            }
+          }
         }
       }
 
       if (typeof this.props.onScroll === 'function') {
-        var _this$state = this.state,
-            _scrollDirection = _this$state.scrollDirection,
-            _scrollOffset = _this$state.scrollOffset,
-            _scrollUpdateWasRequested = _this$state.scrollUpdateWasRequested;
-
-        this._callOnScroll(_scrollDirection, _scrollOffset, _scrollUpdateWasRequested);
+        this._callOnScroll(scrollDirection, scrollOffset, scrollUpdateWasRequested);
       }
     } // This method is called after mount and update.
     // List implementations can override this method to be notified.
@@ -363,9 +445,9 @@ function createListComponent(_ref) {
           itemCount = _this$props4.itemCount,
           overscanCountForward = _this$props4.overscanCountForward,
           overscanCountBackward = _this$props4.overscanCountBackward;
-      var _this$state2 = this.state,
-          scrollDirection = _this$state2.scrollDirection,
-          scrollOffset = _this$state2.scrollOffset;
+      var _this$state3 = this.state,
+          scrollDirection = _this$state3.scrollDirection,
+          scrollOffset = _this$state3.scrollOffset;
 
       if (itemCount === 0) {
         return [0, 0, 0, 0];
@@ -376,10 +458,14 @@ function createListComponent(_ref) {
       var stopIndex = getStopIndexForStartIndex(this.props, startIndex, scrollOffsetValue, this._instanceProps); // Overscan by one item in each direction so that tab/focus works.
       // If there isn't at least one extra item, tab loops back around.
 
-      var overscanBackward = scrollDirection === 'forward' ? overscanCountBackward : Math.max(1, overscanCountForward);
-      var overscanForward = scrollDirection === 'backward' ? overscanCountBackward : Math.max(1, overscanCountForward);
-      var minValue = Math.max(0, startIndex - overscanForward);
-      var maxValue = Math.max(0, Math.min(itemCount - 1, stopIndex + overscanBackward));
+      var overscanBackward = scrollDirection === 'backward' ? overscanCountBackward : Math.max(1, overscanCountForward);
+      var overscanForward = scrollDirection === 'forward' ? overscanCountBackward : Math.max(1, overscanCountForward);
+      var minValue = Math.max(0, stopIndex - overscanBackward);
+      var maxValue = Math.max(0, Math.min(itemCount - 1, startIndex + overscanForward));
+
+      while (!getItemSize(this.props, maxValue, this._instanceProps) && maxValue > 0) {
+        maxValue--;
+      }
 
       if (maxValue < 2 * overscanCountBackward && maxValue < itemCount) {
         return [minValue, Math.min(2 * overscanCountBackward - 1, itemCount - 1), startIndex, stopIndex];
@@ -528,6 +614,7 @@ function (_Component) {
     _this._resizeObserver = null;
     _this._resizeSensorExpand = React.createRef();
     _this._resizeSensorShrink = React.createRef();
+    _this._positionScrollbarsRef = null;
 
     _this.positionScrollBars = function (height, width) {
       if (height === void 0) {
@@ -543,13 +630,19 @@ function (_Component) {
       //Heavily inspired from https://github.com/marcj/css-element-queries/blob/master/src/ResizeSensor.js
       //and https://github.com/wnr/element-resize-detector/blob/master/src/detection-strategy/scroll.js
       //For more info http://www.backalleycoder.com/2013/03/18/cross-browser-event-based-element-resize-detection/#comment-244
-      _this._resizeSensorExpand.current.scrollTop = height + expandScrollDelta;
-      _this._resizeSensorShrink.current.scrollTop = 2 * height + shrinkScrollDelta;
+      if (_this._positionScrollbarsRef) {
+        window.cancelAnimationFrame(_this._positionScrollbarsRef);
+      }
+
+      _this._positionScrollbarsRef = window.requestAnimationFrame(function () {
+        _this._resizeSensorExpand.current.scrollTop = height + expandScrollDelta;
+        _this._resizeSensorShrink.current.scrollTop = 2 * height + shrinkScrollDelta;
+      });
     };
 
     _this.scrollingDiv = function (event) {
       if (event.target.offsetHeight !== _this.props.size) {
-        _this._onResize();
+        _this._measureItem(event.target.offsetWidth !== _this.props.width);
       }
     };
 
@@ -560,10 +653,12 @@ function (_Component) {
         left: '0',
         top: '0',
         height: _this.props.size + expandScrollDelta + "px",
-        width: _this.props.width + expandScrollDelta + "px"
+        width: '100%'
       };
       var renderItem = React.createElement("div", {
-        style: _this.props.style
+        style: {
+          position: 'relative'
+        }
       }, item, React.createElement("div", {
         style: scrollableContainerStyles
       }, React.createElement("div", {
@@ -587,7 +682,7 @@ function (_Component) {
       return renderItem;
     };
 
-    _this._measureItem = function (isCommitPhase) {
+    _this._measureItem = function (forceScrollCorrection) {
       var _this$props = _this.props,
           direction = _this$props.direction,
           handleNewMeasurements = _this$props.handleNewMeasurements,
@@ -599,21 +694,9 @@ function (_Component) {
         var newSize = direction === 'horizontal' ? Math.ceil(node.offsetWidth) : Math.ceil(node.offsetHeight);
 
         if (oldSize !== newSize) {
-          handleNewMeasurements(itemId, newSize, isCommitPhase);
+          handleNewMeasurements(itemId, newSize, forceScrollCorrection);
         }
       }
-    };
-
-    _this._onResize = function (event) {
-      var skipResizeClass = _this.props.skipResizeClass;
-
-      if (event && skipResizeClass && event.findIndex(function (el) {
-        return el.target && el.target.className && el.target.className.includes(skipResizeClass);
-      }) !== -1) {
-        return;
-      }
-
-      _this._measureItem(false);
     };
 
     return _this;
@@ -626,7 +709,7 @@ function (_Component) {
     this._node = node; // Force sync measure for the initial mount.
     // This is necessary to support the DynamicSizeList layout logic.
 
-    this._measureItem(true);
+    this._measureItem(false);
 
     if (this.props.size) {
       // Don't wait for positioning scrollbars when we have size
@@ -636,16 +719,16 @@ function (_Component) {
   };
 
   _proto.componentDidUpdate = function componentDidUpdate(prevProps) {
-    if (prevProps.width !== this.props.width) {
-      this._onResize();
-    }
-
     if (prevProps.size === 0 && this.props.size !== 0 || prevProps.size !== this.props.size) {
       this.positionScrollBars();
     }
   };
 
   _proto.componentWillUnmount = function componentWillUnmount() {
+    if (this._positionScrollbarsRef) {
+      window.cancelAnimationFrame(this._positionScrollbarsRef);
+    }
+
     var _this$props2 = this.props,
         onUnmount = _this$props2.onUnmount,
         itemId = _this$props2.itemId,
@@ -663,39 +746,7 @@ function (_Component) {
   return ItemMeasurer;
 }(Component);
 
-// From https://stackoverflow.com/a/13348618/2902013
-// please note,
-// that IE11 now returns undefined again for window.chrome
-// and new Opera 30 outputs true for window.chrome
-// but needs to check if window.opr is not undefined
-// and new IE Edge outputs to true now for window.chrome
-// and if not iOS Chrome check
-// so use the below updated condition
-// we return true for electron as well as electron also does not immediately correct scroll
-// similar to chrome and loads another set of posts.
-// chromimum seems to work fine so mostly in near future chrome fixes the issue
-function isBrowserChrome() {
-  var isChromium = window.chrome;
-  var winNav = window.navigator;
-  var vendorName = winNav.vendor;
-  var isOpera = typeof window.opr !== 'undefined';
-  var isIEedge = winNav.userAgent.indexOf('Edge') > -1;
-  var isIOSChrome = winNav.userAgent.match('CriOS');
-  var isElectron = winNav.userAgent.toLowerCase().indexOf(' electron/') > -1;
-
-  if (isIOSChrome || isElectron) {
-    return true;
-  } else if (isChromium !== null && typeof isChromium !== 'undefined' && vendorName === 'Google Inc.' && isOpera === false && isIEedge === false) {
-    return true;
-  }
-
-  return false;
-}
-
 var DEFAULT_ESTIMATED_ITEM_SIZE = 50;
-var isChrome =
-/*#__PURE__*/
-isBrowserChrome();
 
 var getItemMetadata = function getItemMetadata(props, index, instanceProps) {
   var instance = instanceProps.instance,
@@ -726,20 +777,15 @@ var generateOffsetMeasurements = function generateOffsetMeasurements(props, inde
   var _instance$props = instance.props,
       itemData = _instance$props.itemData,
       itemCount = _instance$props.itemCount;
-  instanceProps.totalMeasuredSize = itemSizeMap[itemData[0]] || 0;
+  instanceProps.totalMeasuredSize = 0;
 
-  if (index === 0) {
-    itemOffsetMap[itemData[0]] = 0;
-    delete instance._itemStyleCache[itemData[0]];
-  }
-
-  for (var i = 1; i < itemCount; i++) {
-    var prevOffset = itemOffsetMap[itemData[i - 1]] || 0; // In some browsers (e.g. Firefox) fast scrolling may skip rows.
+  for (var i = itemCount - 1; i >= 0; i--) {
+    var prevOffset = itemOffsetMap[itemData[i + 1]] || 0; // In some browsers (e.g. Firefox) fast scrolling may skip rows.
     // In this case, our assumptions about last measured indices may be incorrect.
     // Handle this edge case to prevent NaN values from breaking styles.
     // Slow scrolling back over these skipped rows will adjust their sizes.
 
-    var prevSize = itemSizeMap[itemData[i - 1]] || 0;
+    var prevSize = itemSizeMap[itemData[i + 1]] || 0;
     itemOffsetMap[itemData[i]] = prevOffset + prevSize;
     instanceProps.totalMeasuredSize += itemSizeMap[itemData[i]] || 0; // Reset cached style to clear stale position.
 
@@ -749,7 +795,7 @@ var generateOffsetMeasurements = function generateOffsetMeasurements(props, inde
 
 var findNearestItemBinarySearch = function findNearestItemBinarySearch(props, instanceProps, high, low, offset) {
   while (low < high) {
-    var offsetNew = instanceProps.totalMeasuredSize - offset - props.height;
+    var offsetNew = offset;
     var middle = low + Math.floor((high - low) / 2);
     var currentOffset = getItemMetadata(props, middle, instanceProps).offset;
 
@@ -757,9 +803,9 @@ var findNearestItemBinarySearch = function findNearestItemBinarySearch(props, in
       return low;
     } else if (currentOffset === offsetNew) {
       return middle;
-    } else if (currentOffset < offsetNew) {
-      low = middle + 1;
     } else if (currentOffset > offsetNew) {
+      low = middle + 1;
+    } else if (currentOffset < offsetNew) {
       high = middle - 1;
     }
   }
@@ -789,20 +835,19 @@ createListComponent({
     // Do not hard-code item dimensions.
     // We don't know them initially.
     // Even once we do, changes in item content or list size should reflow.
-    return undefined;
+    return getItemMetadata(props, index, instanceProps).size;
   },
   getEstimatedTotalSize: getEstimatedTotalSize,
   getOffsetForIndexAndAlignment: function getOffsetForIndexAndAlignment(props, index, align, scrollOffset, instanceProps) {
     var direction = props.direction,
         height = props.height,
         width = props.width;
-    var size = direction === 'horizontal' ? width : height;
     var itemMetadata = getItemMetadata(props, index, instanceProps); // Get estimated total size after ItemMetadata is computed,
     // To ensure it reflects actual measurements instead of just estimates.
 
     var estimatedTotalSize = getEstimatedTotalSize(props, instanceProps);
-    var maxOffset = Math.max(0, estimatedTotalSize - (size + itemMetadata.offset));
-    var minOffset = Math.max(0, estimatedTotalSize - itemMetadata.offset - (itemMetadata.size || 0));
+    var maxOffset = Math.max(0, itemMetadata.offset + itemMetadata.size - height);
+    var minOffset = Math.max(0, itemMetadata.offset);
 
     switch (align) {
       case 'start':
@@ -812,7 +857,7 @@ createListComponent({
         return maxOffset;
 
       case 'center':
-        return Math.round(minOffset + (maxOffset - minOffset) / 2);
+        return Math.round(minOffset - height / 2 + itemMetadata.size / 2);
 
       case 'auto':
       default:
@@ -841,25 +886,16 @@ createListComponent({
   getStopIndexForStartIndex: function getStopIndexForStartIndex(props, startIndex, scrollOffset, instanceProps) {
     var itemCount = props.itemCount;
     var stopIndex = startIndex;
-    var maxOffset = instanceProps.totalMeasuredSize - scrollOffset;
+    var maxOffset = scrollOffset + props.height;
     var itemMetadata = getItemMetadata(props, stopIndex, instanceProps);
     var offset = itemMetadata.offset + (itemMetadata.size || 0);
     var closestOffsetIndex = 0;
-    var previousOffset = 0;
 
-    while (stopIndex < itemCount && offset <= maxOffset) {
+    while (stopIndex > 0 && offset <= maxOffset) {
       var _itemMetadata = getItemMetadata(props, stopIndex, instanceProps);
 
       offset = _itemMetadata.offset + _itemMetadata.size;
-
-      if (offset > previousOffset) {
-        closestOffsetIndex = stopIndex;
-      } else if (_itemMetadata.offset === 0 && stopIndex !== 0) {
-        return --stopIndex;
-      }
-
-      previousOffset = offset;
-      stopIndex++;
+      stopIndex--;
     }
 
     if (stopIndex >= itemCount) {
@@ -880,14 +916,11 @@ createListComponent({
       atBottom: true
     };
     var mountingCorrections = 0;
-    var unMountingCorrections = 0;
     var correctedInstances = 0;
-    var correctionFrame;
 
-    var handleNewMeasurements = function handleNewMeasurements(key, newSize, isFirstMeasureAfterMounting) {
+    var handleNewMeasurements = function handleNewMeasurements(key, newSize, forceScrollCorrection) {
       var itemSizeMap = instanceProps.itemSizeMap;
       var itemData = instance.props.itemData;
-      var delta = 0;
       var index = itemData.findIndex(function (item) {
         return item === key;
       }); // In some browsers (e.g. Firefox) fast scrolling may skip rows.
@@ -901,95 +934,97 @@ createListComponent({
         return;
       }
 
-      delta += newSize - oldSize;
       itemSizeMap[key] = newSize;
 
       if (!instance.state.scrolledToInitIndex) {
         generateOffsetMeasurements(props, index, instanceProps);
-        instance.forceUpdate();
         return;
       }
 
       var element = instance._outerRef;
 
-      if (instance.state.scrollOffset + instance.props.height >= element.scrollHeight - 10) {
+      if (instance.props.height + element.scrollTop >= instanceProps.totalMeasuredSize - 10) {
         generateOffsetMeasurements(props, index, instanceProps);
-        instance.forceUpdate();
         instance.scrollToItem(0, 'end');
+        instance.forceUpdate();
         return;
       }
 
-      var _instance$_getRangeTo = instance._getRangeToRender(element.scrollTop),
-          visibleStopIndex = _instance$_getRangeTo[3];
+      if (forceScrollCorrection) {
+        var delta = newSize - oldSize;
+
+        var _instance$_getRangeTo = instance._getRangeToRender(element.scrollTop),
+            visibleStartIndex = _instance$_getRangeTo[2];
+
+        generateOffsetMeasurements(props, index, instanceProps);
+
+        if (index < visibleStartIndex + 1) {
+          return;
+        }
+
+        instance._scrollCorrectionInProgress = true;
+        instance.setState(function (prevState) {
+          var deltaValue;
+
+          if (mountingCorrections === 0) {
+            deltaValue = delta;
+          } else {
+            deltaValue = prevState.scrollDelta + delta;
+          }
+
+          mountingCorrections++;
+          var newOffset = prevState.scrollOffset + delta;
+          return {
+            scrollOffset: newOffset,
+            scrollDelta: deltaValue
+          };
+        }, function () {
+          // $FlowFixMe Property scrollBy is missing in HTMLDivElement
+          correctedInstances++;
+
+          if (mountingCorrections === correctedInstances) {
+            correctScroll();
+          }
+        });
+        return;
+      }
 
       generateOffsetMeasurements(props, index, instanceProps);
-
-      if (index < visibleStopIndex - 1) {
-        instance.forceUpdate();
-        return;
-      }
-
-      instance._scrollCorrectionInProgress = true;
-      instance.setState(function (prevState) {
-        var deltaValue;
-
-        if (mountingCorrections === 0 && unMountingCorrections === 0) {
-          deltaValue = delta;
-        } else {
-          deltaValue = prevState.scrollDelta + delta;
-        }
-
-        mountingCorrections++;
-        var newOffset = prevState.scrollOffset + delta;
-        return {
-          scrollOffset: newOffset,
-          scrollDelta: deltaValue
-        };
-      }, function () {
-        // $FlowFixMe Property scrollBy is missing in HTMLDivElement
-        correctedInstances++;
-
-        if (mountingCorrections === correctedInstances) {
-          if (mountingCorrections === 1) {
-            correctScroll();
-          } else {
-            if (isChrome) {
-              if (correctionFrame) {
-                window.cancelAnimationFrame(correctionFrame);
-              }
-
-              correctionFrame = window.requestAnimationFrame(correctScroll);
-            } else {
-              correctScroll();
-            }
-          }
-        }
-      });
     };
 
     var correctScroll = function correctScroll() {
-      var _instance$state = instance.state,
-          scrollOffset = _instance$state.scrollOffset,
-          scrollDelta = _instance$state.scrollDelta;
-      var direction = instance.props.direction;
+      var scrollOffset = instance.state.scrollOffset;
       var element = instance._outerRef;
 
       if (element) {
-        if (typeof element.scrollBy === 'function') {
-          if (scrollDelta !== 0) {
-            var x = direction === 'horizontal' ? scrollDelta : 0;
-            var y = direction === 'horizontal' ? 0 : scrollDelta;
-            element.scrollBy(x, y);
-          }
-        } else if (direction === 'horizontal') {
-          element.scrollLeft = scrollOffset;
-        } else {
-          element.scrollTop = scrollOffset;
-        }
-
+        element.scrollTop = scrollOffset;
         instance._scrollCorrectionInProgress = false;
         correctedInstances = 0;
         mountingCorrections = 0;
+      }
+    };
+
+    var onItemRowUnmount = function onItemRowUnmount(itemId, index) {
+      var props = instance.props;
+
+      if (props.itemData[index] === itemId) {
+        return;
+      }
+
+      var doesItemExist = props.itemData.includes(itemId);
+
+      if (!doesItemExist) {
+        delete instanceProps.itemSizeMap[itemId];
+        delete instanceProps.itemOffsetMap[itemId];
+        var element = instance._outerRef;
+        var atBottom = element.offsetHeight + element.scrollTop >= instanceProps.totalMeasuredSize - 10;
+        generateOffsetMeasurements(props, index, instanceProps);
+
+        if (atBottom) {
+          instance.scrollToItem(0, 'end');
+        }
+
+        instance.forceUpdate();
       }
     };
 
@@ -1000,6 +1035,13 @@ createListComponent({
     };
 
     instance._heightChange = function (prevHeight, prevOffset) {
+      if (prevOffset + prevHeight >= instanceProps.totalMeasuredSize - 10) {
+        instance.scrollToItem(0, 'end');
+        return;
+      }
+    };
+
+    instance._widthChange = function (prevHeight, prevOffset) {
       if (prevOffset + prevHeight >= instanceProps.totalMeasuredSize - 10) {
         instance.scrollToItem(0, 'end');
         return;
@@ -1019,85 +1061,8 @@ createListComponent({
       }
     };
 
-    instance._handleNewMeasurements = handleNewMeasurements;
-
-    var onItemRowUnmount = function onItemRowUnmount(itemId, index) {
-      var props = instance.props;
-
-      if (props.itemData[index] === itemId) {
-        return;
-      }
-
-      var doesItemExist = props.itemData.includes(itemId);
-
-      if (!doesItemExist) {
-        var delta = instanceProps.itemSizeMap[itemId];
-        delete instanceProps.itemSizeMap[itemId];
-        delete instanceProps.itemOffsetMap[itemId];
-        var element = instance._outerRef;
-
-        var _instance$_getRangeTo2 = instance._getRangeToRender(element.scrollTop),
-            visibleStopIndex = _instance$_getRangeTo2[3];
-
-        if (instance.state.scrollOffset + instance.props.height >= instanceProps.totalMeasuredSize - 10) {
-          generateOffsetMeasurements(props, index, instanceProps);
-          instance.scrollToItem(0, 'end');
-          instance.forceUpdate();
-          return;
-        }
-
-        generateOffsetMeasurements(props, index, instanceProps);
-
-        if (index < visibleStopIndex) {
-          instance.forceUpdate();
-          return;
-        }
-
-        instance.setState(function (prevState) {
-          var DeltaValue = 0;
-
-          if (unMountingCorrections === 0 && mountingCorrections === 0) {
-            DeltaValue = -delta;
-          } else {
-            DeltaValue = prevState.scrollDelta - delta;
-          }
-
-          var newOffset = prevState.scrollOffset + DeltaValue;
-          unMountingCorrections++;
-          return {
-            scrollOffset: newOffset,
-            scrollDelta: DeltaValue
-          };
-        }, function () {
-          if (mountingCorrections === 0) {
-            var _instance$state2 = instance.state,
-                scrollOffset = _instance$state2.scrollOffset,
-                scrollDelta = _instance$state2.scrollDelta;
-            var direction = instance.props.direction;
-            var _element = instance._outerRef;
-
-            if (_element) {
-              if (typeof _element.scrollBy === 'function') {
-                if (scrollDelta !== 0) {
-                  var x = direction === 'horizontal' ? scrollDelta : 0;
-                  var y = direction === 'horizontal' ? 0 : scrollDelta;
-
-                  _element.scrollBy(x, y);
-                }
-              } else if (direction === 'horizontal') {
-                _element.scrollLeft = scrollOffset;
-              } else {
-                _element.scrollTop = scrollOffset;
-              }
-            }
-          }
-
-          unMountingCorrections--;
-        });
-      }
-    }; // Override the item-rendering process to wrap items with ItemMeasurer.
+    instance._handleNewMeasurements = handleNewMeasurements; // Override the item-rendering process to wrap items with ItemMeasurer.
     // This keep the external API simpler.
-
 
     instance._renderItems = function () {
       var _instance$props2 = instance.props,
@@ -1107,42 +1072,52 @@ createListComponent({
           itemData = _instance$props2.itemData,
           _instance$props2$item = _instance$props2.itemKey,
           itemKey = _instance$props2$item === void 0 ? defaultItemKey : _instance$props2$item,
-          width = _instance$props2.width,
           skipResizeClass = _instance$props2.skipResizeClass;
+      var width = instance.innerRefWidth;
 
-      var _instance$_getRangeTo3 = instance._getRangeToRender(),
-          startIndex = _instance$_getRangeTo3[0],
-          stopIndex = _instance$_getRangeTo3[1];
+      var _instance$_getRangeTo2 = instance._getRangeToRender(),
+          startIndex = _instance$_getRangeTo2[0],
+          stopIndex = _instance$_getRangeTo2[1];
 
       var items = [];
 
       if (itemCount > 0) {
-        for (var _index2 = startIndex; _index2 <= stopIndex; _index2++) {
+        for (var _index2 = itemCount - 1; _index2 >= 0; _index2--) {
           var _getItemMetadata = getItemMetadata(instance.props, _index2, instanceProps),
-              size = _getItemMetadata.size; // It's important to read style after fetching item metadata.
-          // getItemMetadata() will clear stale styles.
+              size = _getItemMetadata.size;
 
+          var _instance$state$local = instance.state.localOlderPostsToRender,
+              localOlderPostsToRenderStartIndex = _instance$state$local[0],
+              localOlderPostsToRenderStopIndex = _instance$state$local[1];
+          var isItemInLocalPosts = _index2 >= localOlderPostsToRenderStartIndex && _index2 < localOlderPostsToRenderStopIndex + 1 && localOlderPostsToRenderStartIndex === stopIndex + 1; // It's important to read style after fetching item metadata.
+          // getItemMetadata() will clear stale styles.
 
           var style = instance._getItemStyle(_index2);
 
-          var item = createElement(children, {
-            data: itemData,
-            itemId: itemData[_index2]
-          }); // Always wrap children in a ItemMeasurer to detect changes in size.
+          if (_index2 >= startIndex && _index2 < stopIndex + 1 || isItemInLocalPosts) {
+            var item = createElement(children, {
+              data: itemData,
+              itemId: itemData[_index2]
+            }); // Always wrap children in a ItemMeasurer to detect changes in size.
 
-          items.push(createElement(ItemMeasurer, {
-            direction: direction,
-            handleNewMeasurements: handleNewMeasurements,
-            index: _index2,
-            item: item,
-            key: itemKey(_index2),
-            size: size,
-            itemId: itemKey(_index2),
-            onUnmount: onItemRowUnmount,
-            width: width,
-            skipResizeClass: skipResizeClass,
-            style: style
-          }));
+            items.push(createElement(ItemMeasurer, {
+              direction: direction,
+              handleNewMeasurements: handleNewMeasurements,
+              index: _index2,
+              item: item,
+              key: itemKey(_index2),
+              size: size,
+              itemId: itemKey(_index2),
+              width: width,
+              skipResizeClass: skipResizeClass,
+              onUnmount: onItemRowUnmount
+            }));
+          } else {
+            items.push(createElement('div', {
+              key: itemKey(_index2),
+              style: style
+            }));
+          }
         }
       }
 
@@ -1162,6 +1137,34 @@ createListComponent({
     }
   }
 });
+
+// Animation frame based implementation of setTimeout.
+// Inspired by Joe Lambert, https://gist.github.com/joelambert/1002116#file-requesttimeout-js
+var hasNativePerformanceNow = typeof performance === 'object' && typeof performance.now === 'function';
+var now = hasNativePerformanceNow ? function () {
+  return performance.now();
+} : function () {
+  return Date.now();
+};
+function cancelTimeout(timeoutID) {
+  cancelAnimationFrame(timeoutID.id);
+}
+function requestTimeout(callback, delay) {
+  var start = now();
+
+  function tick() {
+    if (now() - start >= delay) {
+      callback.call(null);
+    } else {
+      timeoutID.id = requestAnimationFrame(tick);
+    }
+  }
+
+  var timeoutID = {
+    id: requestAnimationFrame(tick)
+  };
+  return timeoutID;
+}
 
 var IS_SCROLLING_DEBOUNCE_INTERVAL = 150;
 

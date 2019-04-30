@@ -109,13 +109,15 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
   _resizeObserver: ResizeObserver | null = null;
   _resizeSensorExpand = React.createRef();
   _resizeSensorShrink = React.createRef();
+  _positionScrollbarsRef = null;
 
   componentDidMount() {
     const node = ((findDOMNode(this): any): HTMLElement);
     this._node = node;
     // Force sync measure for the initial mount.
     // This is necessary to support the DynamicSizeList layout logic.
-    this._measureItem(true);
+    this._measureItem(false);
+
     if (this.props.size) {
       // Don't wait for positioning scrollbars when we have size
       // This is needed triggering an event for remounting a post
@@ -124,10 +126,6 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
   }
 
   componentDidUpdate(prevProps) {
-    if (prevProps.width !== this.props.width) {
-      this._onResize();
-    }
-
     if (
       (prevProps.size === 0 && this.props.size !== 0) ||
       prevProps.size !== this.props.size
@@ -142,12 +140,21 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
     //Heavily inspired from https://github.com/marcj/css-element-queries/blob/master/src/ResizeSensor.js
     //and https://github.com/wnr/element-resize-detector/blob/master/src/detection-strategy/scroll.js
     //For more info http://www.backalleycoder.com/2013/03/18/cross-browser-event-based-element-resize-detection/#comment-244
-
-    this._resizeSensorExpand.current.scrollTop = height + expandScrollDelta;
-    this._resizeSensorShrink.current.scrollTop = 2 * height + shrinkScrollDelta;
+    if (this._positionScrollbarsRef) {
+      window.cancelAnimationFrame(this._positionScrollbarsRef);
+    }
+    this._positionScrollbarsRef = window.requestAnimationFrame(() => {
+      this._resizeSensorExpand.current.scrollTop = height + expandScrollDelta;
+      this._resizeSensorShrink.current.scrollTop =
+        2 * height + shrinkScrollDelta;
+    });
   };
 
   componentWillUnmount() {
+    if (this._positionScrollbarsRef) {
+      window.cancelAnimationFrame(this._positionScrollbarsRef);
+    }
+
     const { onUnmount, itemId, index } = this.props;
     if (onUnmount) {
       onUnmount(itemId, index);
@@ -156,7 +163,7 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
 
   scrollingDiv = event => {
     if (event.target.offsetHeight !== this.props.size) {
-      this._onResize();
+      this._measureItem(event.target.offsetWidth !== this.props.width);
     }
   };
 
@@ -168,11 +175,11 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
       left: '0',
       top: '0',
       height: `${this.props.size + expandScrollDelta}px`,
-      width: `${this.props.width + expandScrollDelta}px`,
+      width: '100%',
     };
 
     const renderItem = (
-      <div style={this.props.style}>
+      <div style={{ position: 'relative' }}>
         {item}
         <div style={scrollableContainerStyles}>
           <div dir="ltr" style={scrollableWrapperStyle}>
@@ -203,7 +210,7 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
     return this.renderItems();
   }
 
-  _measureItem = (isCommitPhase: boolean) => {
+  _measureItem = (forceScrollCorrection: boolean) => {
     const {
       direction,
       handleNewMeasurements,
@@ -225,20 +232,8 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
           : Math.ceil(node.offsetHeight);
 
       if (oldSize !== newSize) {
-        handleNewMeasurements(itemId, newSize, isCommitPhase);
+        handleNewMeasurements(itemId, newSize, forceScrollCorrection);
       }
     }
-  };
-
-  _onResize = event => {
-    const { skipResizeClass } = this.props;
-    if (
-      event &&
-      skipResizeClass &&
-      event.findIndex((el) => el.target && el.target.className && el.target.className.includes(skipResizeClass)) !== -1) {
-      return;
-    }
-
-    this._measureItem(false);
   };
 }
