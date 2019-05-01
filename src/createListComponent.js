@@ -188,6 +188,7 @@ export default function createListComponent({
             prevState.scrollOffset >= scrollOffset ? 'backward' : 'forward',
           scrollOffset: scrollOffset,
           scrollUpdateWasRequested: true,
+          scrollByValue,
         }),
         () => {
           if (isChrome && useAnimationFrame) {
@@ -195,10 +196,10 @@ export default function createListComponent({
               window.cancelAnimationFrame(this._scrollByCorrection);
             }
             this._scrollByCorrection = window.requestAnimationFrame(
-              this.scrollBy(scrollOffset, scrollByValue)
+              this.scrollBy(this.state.scrollOffset, this.state.scrollByValue)
             );
           } else {
-            this.scrollBy(scrollOffset, scrollByValue)();
+            this.scrollBy(this.state.scrollOffset, this.state.scrollByValue)();
           }
         }
       );
@@ -268,9 +269,9 @@ export default function createListComponent({
         } = this.state;
 
         const {
-          prevScrollDirection,
-          prevScrollOffset,
-          prevScrollUpdateWasRequested,
+          scrollDirection: prevScrollDirection,
+          scrollOffset: prevScrollOffset,
+          scrollUpdateWasRequested: prevScrollUpdateWasRequested,
         } = prevState;
 
         if (
@@ -315,7 +316,7 @@ export default function createListComponent({
         this.scrollTo(
           scrollValue,
           scrollValue - snapshot.previousScrollTop,
-          false
+          true
         );
       }
     }
@@ -441,13 +442,13 @@ export default function createListComponent({
             if (!sizeOfNextElement && this.state.scrolledToInitIndex) {
               this.setState(prevState => {
                 if (
-                  prevState.localOlderPostsToRender &&
-                  prevState.localOlderPostsToRender[0] !== overscanStopIndex + 1
+                  prevState.localOlderPostsToRender[0] !==
+                  overscanStopIndex + 1
                 ) {
                   return {
                     localOlderPostsToRender: [
                       overscanStopIndex + 1,
-                      overscanStopIndex + 26,
+                      overscanStopIndex + 50,
                     ],
                   };
                 }
