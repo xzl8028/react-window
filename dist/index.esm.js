@@ -241,7 +241,8 @@ function createListComponent(_ref) {
         return {
           scrollDirection: prevState.scrollOffset >= scrollOffset ? 'backward' : 'forward',
           scrollOffset: scrollOffset,
-          scrollUpdateWasRequested: true
+          scrollUpdateWasRequested: true,
+          scrollByValue: scrollByValue
         };
       }, function () {
         if (isChrome && useAnimationFrame) {
@@ -249,9 +250,9 @@ function createListComponent(_ref) {
             window.cancelAnimationFrame(_this2._scrollByCorrection);
           }
 
-          _this2._scrollByCorrection = window.requestAnimationFrame(_this2.scrollBy(scrollOffset, scrollByValue));
+          _this2._scrollByCorrection = window.requestAnimationFrame(_this2.scrollBy(_this2.state.scrollOffset, _this2.state.scrollByValue));
         } else {
-          _this2.scrollBy(scrollOffset, scrollByValue)();
+          _this2.scrollBy(_this2.state.scrollOffset, _this2.state.scrollByValue)();
         }
       });
     };
@@ -312,9 +313,9 @@ function createListComponent(_ref) {
             _scrollDirection = _this$state.scrollDirection,
             _scrollOffset = _this$state.scrollOffset,
             _scrollUpdateWasRequested = _this$state.scrollUpdateWasRequested;
-        var prevScrollDirection = prevState.prevScrollDirection,
-            prevScrollOffset = prevState.prevScrollOffset,
-            prevScrollUpdateWasRequested = prevState.prevScrollUpdateWasRequested;
+        var prevScrollDirection = prevState.scrollDirection,
+            prevScrollOffset = prevState.scrollOffset,
+            prevScrollUpdateWasRequested = prevState.scrollUpdateWasRequested;
 
         if (_scrollDirection !== prevScrollDirection || _scrollOffset !== prevScrollOffset || _scrollUpdateWasRequested !== prevScrollUpdateWasRequested) {
           this._callPropsCallbacks();
@@ -345,7 +346,7 @@ function createListComponent(_ref) {
       if (prevState.localOlderPostsToRender[0] !== this.state.localOlderPostsToRender[0] || prevState.localOlderPostsToRender[1] !== this.state.localOlderPostsToRender[1]) {
         var postlistScrollHeight = this._outerRef.scrollHeight;
         var scrollValue = snapshot.previousScrollTop + (postlistScrollHeight - snapshot.previousScrollHeight);
-        this.scrollTo(scrollValue, scrollValue - snapshot.previousScrollTop, false);
+        this.scrollTo(scrollValue, scrollValue - snapshot.previousScrollTop, true);
       }
     };
 
@@ -406,9 +407,9 @@ function createListComponent(_ref) {
 
             if (!sizeOfNextElement && this.state.scrolledToInitIndex) {
               this.setState(function (prevState) {
-                if (prevState.localOlderPostsToRender && prevState.localOlderPostsToRender[0] !== _overscanStopIndex + 1) {
+                if (prevState.localOlderPostsToRender[0] !== _overscanStopIndex + 1) {
                   return {
-                    localOlderPostsToRender: [_overscanStopIndex + 1, _overscanStopIndex + 26]
+                    localOlderPostsToRender: [_overscanStopIndex + 1, _overscanStopIndex + 50]
                   };
                 }
 
@@ -799,9 +800,7 @@ var findNearestItemBinarySearch = function findNearestItemBinarySearch(props, in
     var middle = low + Math.floor((high - low) / 2);
     var currentOffset = getItemMetadata(props, middle, instanceProps).offset;
 
-    if (!currentOffset) {
-      return low;
-    } else if (currentOffset === offsetNew) {
+    if (currentOffset === offsetNew) {
       return middle;
     } else if (currentOffset > offsetNew) {
       low = middle + 1;
