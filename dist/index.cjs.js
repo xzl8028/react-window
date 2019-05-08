@@ -726,6 +726,14 @@ function (_Component) {
     }
   };
 
+  _proto.shouldComponentUpdate = function shouldComponentUpdate(nextProps) {
+    if (nextProps.width !== this.props.width || nextProps.size !== this.props.size) {
+      return true;
+    }
+
+    return false;
+  };
+
   _proto.componentDidUpdate = function componentDidUpdate(prevProps) {
     if (prevProps.size === 0 && this.props.size !== 0 || prevProps.size !== this.props.size) {
       this.positionScrollBars();
