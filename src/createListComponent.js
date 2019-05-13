@@ -390,27 +390,34 @@ export default function createListComponent({
     _callOnScroll: (
       scrollDirection: ScrollDirection,
       scrollOffset: number,
-      scrollUpdateWasRequested: boolean
+      scrollUpdateWasRequested: boolean,
+      scrollHeight: number,
+      clientHeight: number
     ) => void;
     _callOnScroll = memoizeOne(
       (
         scrollDirection: ScrollDirection,
         scrollOffset: number,
-        scrollUpdateWasRequested: boolean
+        scrollUpdateWasRequested: boolean,
+        scrollHeight: number,
+        clientHeight: number
       ) =>
         ((this.props.onScroll: any): onScrollCallback)({
           scrollDirection,
           scrollOffset,
           scrollUpdateWasRequested,
+          scrollHeight,
+          clientHeight,
         })
     );
 
     _callPropsCallbacks() {
-      const { itemCount } = this.props;
+      const { itemCount, height } = this.props;
       const {
         scrollDirection,
         scrollOffset,
         scrollUpdateWasRequested,
+        scrollHeight,
       } = this.state;
 
       if (typeof this.props.onItemsRendered === 'function') {
@@ -463,7 +470,9 @@ export default function createListComponent({
         this._callOnScroll(
           scrollDirection,
           scrollOffset,
-          scrollUpdateWasRequested
+          scrollUpdateWasRequested,
+          scrollHeight,
+          height
         );
       }
     }
@@ -583,14 +592,13 @@ export default function createListComponent({
         maxValue--;
       }
 
-      if (maxValue < 2 * overscanCountBackward && maxValue < itemCount) {
-        return [
-          minValue,
-          Math.min(2 * overscanCountBackward - 1, itemCount - 1),
-          startIndex,
-          stopIndex,
-        ];
+      if (
+        !this.state.scrolledToInitIndex &&
+        this.props.initRangeToRender.length
+      ) {
+        return this.props.initRangeToRender;
       }
+
       return [minValue, maxValue, startIndex, stopIndex];
     }
 

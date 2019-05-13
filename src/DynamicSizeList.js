@@ -389,6 +389,7 @@ const DynamicSizeList = createListComponent({
         itemData,
         itemKey = defaultItemKey,
         skipResizeClass,
+        loaderId,
       } = instance.props;
       const width = instance.innerRefWidth;
       let [startIndex, stopIndex] = instance._getRangeToRender();
@@ -412,12 +413,15 @@ const DynamicSizeList = createListComponent({
             index < localOlderPostsToRenderStopIndex + 1 &&
             localOlderPostsToRenderStartIndex === stopIndex + 1;
 
+          const isLoader = itemData[index] === loaderId;
+
           // It's important to read style after fetching item metadata.
           // getItemMetadata() will clear stale styles.
           const style = instance._getItemStyle(index);
           if (
             (index >= startIndex && index < stopIndex + 1) ||
-            isItemInLocalPosts
+            isItemInLocalPosts ||
+            isLoader
           ) {
             const item = createElement(children, {
               data: itemData,

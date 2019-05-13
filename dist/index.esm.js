@@ -102,11 +102,13 @@ function createListComponent(_ref) {
         });
       });
       _this._callOnScroll = void 0;
-      _this._callOnScroll = memoizeOne(function (scrollDirection, scrollOffset, scrollUpdateWasRequested) {
+      _this._callOnScroll = memoizeOne(function (scrollDirection, scrollOffset, scrollUpdateWasRequested, scrollHeight, clientHeight) {
         return _this.props.onScroll({
           scrollDirection: scrollDirection,
           scrollOffset: scrollOffset,
-          scrollUpdateWasRequested: scrollUpdateWasRequested
+          scrollUpdateWasRequested: scrollUpdateWasRequested,
+          scrollHeight: scrollHeight,
+          clientHeight: clientHeight
         });
       });
       _this._getItemStyle = void 0;
@@ -386,11 +388,14 @@ function createListComponent(_ref) {
     };
 
     _proto._callPropsCallbacks = function _callPropsCallbacks() {
-      var itemCount = this.props.itemCount;
+      var _this$props4 = this.props,
+          itemCount = _this$props4.itemCount,
+          height = _this$props4.height;
       var _this$state2 = this.state,
           scrollDirection = _this$state2.scrollDirection,
           scrollOffset = _this$state2.scrollOffset,
-          scrollUpdateWasRequested = _this$state2.scrollUpdateWasRequested;
+          scrollUpdateWasRequested = _this$state2.scrollUpdateWasRequested,
+          scrollHeight = _this$state2.scrollHeight;
 
       if (typeof this.props.onItemsRendered === 'function') {
         if (itemCount > 0) {
@@ -421,7 +426,7 @@ function createListComponent(_ref) {
       }
 
       if (typeof this.props.onScroll === 'function') {
-        this._callOnScroll(scrollDirection, scrollOffset, scrollUpdateWasRequested);
+        this._callOnScroll(scrollDirection, scrollOffset, scrollUpdateWasRequested, scrollHeight, height);
       }
     } // This method is called after mount and update.
     // List implementations can override this method to be notified.
@@ -442,10 +447,10 @@ function createListComponent(_ref) {
     ;
 
     _proto._getRangeToRender = function _getRangeToRender(scrollTop, scrollHeight) {
-      var _this$props4 = this.props,
-          itemCount = _this$props4.itemCount,
-          overscanCountForward = _this$props4.overscanCountForward,
-          overscanCountBackward = _this$props4.overscanCountBackward;
+      var _this$props5 = this.props,
+          itemCount = _this$props5.itemCount,
+          overscanCountForward = _this$props5.overscanCountForward,
+          overscanCountBackward = _this$props5.overscanCountBackward;
       var _this$state3 = this.state,
           scrollDirection = _this$state3.scrollDirection,
           scrollOffset = _this$state3.scrollOffset;
@@ -468,20 +473,20 @@ function createListComponent(_ref) {
         maxValue--;
       }
 
-      if (maxValue < 2 * overscanCountBackward && maxValue < itemCount) {
-        return [minValue, Math.min(2 * overscanCountBackward - 1, itemCount - 1), startIndex, stopIndex];
+      if (!this.state.scrolledToInitIndex && this.props.initRangeToRender.length) {
+        return this.props.initRangeToRender;
       }
 
       return [minValue, maxValue, startIndex, stopIndex];
     };
 
     _proto._renderItems = function _renderItems() {
-      var _this$props5 = this.props,
-          children = _this$props5.children,
-          itemCount = _this$props5.itemCount,
-          itemData = _this$props5.itemData,
-          _this$props5$itemKey = _this$props5.itemKey,
-          itemKey = _this$props5$itemKey === void 0 ? defaultItemKey : _this$props5$itemKey;
+      var _this$props6 = this.props,
+          children = _this$props6.children,
+          itemCount = _this$props6.itemCount,
+          itemData = _this$props6.itemData,
+          _this$props6$itemKey = _this$props6.itemKey,
+          itemKey = _this$props6$itemKey === void 0 ? defaultItemKey : _this$props6$itemKey;
 
       var _this$_getRangeToRend2 = this._getRangeToRender(),
           startIndex = _this$_getRangeToRend2[0],
@@ -1079,7 +1084,8 @@ createListComponent({
           itemData = _instance$props2.itemData,
           _instance$props2$item = _instance$props2.itemKey,
           itemKey = _instance$props2$item === void 0 ? defaultItemKey : _instance$props2$item,
-          skipResizeClass = _instance$props2.skipResizeClass;
+          skipResizeClass = _instance$props2.skipResizeClass,
+          loaderId = _instance$props2.loaderId;
       var width = instance.innerRefWidth;
 
       var _instance$_getRangeTo2 = instance._getRangeToRender(),
@@ -1096,12 +1102,13 @@ createListComponent({
           var _instance$state$local = instance.state.localOlderPostsToRender,
               localOlderPostsToRenderStartIndex = _instance$state$local[0],
               localOlderPostsToRenderStopIndex = _instance$state$local[1];
-          var isItemInLocalPosts = _index2 >= localOlderPostsToRenderStartIndex && _index2 < localOlderPostsToRenderStopIndex + 1 && localOlderPostsToRenderStartIndex === stopIndex + 1; // It's important to read style after fetching item metadata.
+          var isItemInLocalPosts = _index2 >= localOlderPostsToRenderStartIndex && _index2 < localOlderPostsToRenderStopIndex + 1 && localOlderPostsToRenderStartIndex === stopIndex + 1;
+          var isLoader = itemData[_index2] === loaderId; // It's important to read style after fetching item metadata.
           // getItemMetadata() will clear stale styles.
 
           var style = instance._getItemStyle(_index2);
 
-          if (_index2 >= startIndex && _index2 < stopIndex + 1 || isItemInLocalPosts) {
+          if (_index2 >= startIndex && _index2 < stopIndex + 1 || isItemInLocalPosts || isLoader) {
             var item = createElement(children, {
               data: itemData,
               itemId: itemData[_index2]
