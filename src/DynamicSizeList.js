@@ -262,7 +262,8 @@ const DynamicSizeList = createListComponent({
 
       if (
         instance.props.height + element.scrollTop >=
-        instanceProps.totalMeasuredSize - 10
+          instanceProps.totalMeasuredSize - 10 ||
+        instance._keepScrollToBottom
       ) {
         generateOffsetMeasurements(props, index, instanceProps);
         instance.scrollToItem(0, 'end');
@@ -270,7 +271,7 @@ const DynamicSizeList = createListComponent({
         return;
       }
 
-      if (forceScrollCorrection) {
+      if (forceScrollCorrection || instance._keepScrollPosition) {
         const delta = newSize - oldSize;
         const [, , visibleStartIndex] = instance._getRangeToRender(
           element.scrollTop
@@ -374,6 +375,12 @@ const DynamicSizeList = createListComponent({
         instance.setState({
           scrolledToInitIndex: true,
         });
+
+        if (index === 0) {
+          instance._keepScrollToBottom = true;
+        } else {
+          instance._keepScrollPosition = true;
+        }
       }
     };
 

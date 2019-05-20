@@ -67,8 +67,9 @@ function createListComponent(_ref) {
       _this._instanceProps = initInstanceProps(_this.props, _assertThisInitialized(_assertThisInitialized(_this)));
       _this._outerRef = void 0;
       _this._scrollCorrectionInProgress = false;
-      _this._atBottom = true;
       _this._scrollByCorrection = null;
+      _this._keepScrollPosition = false;
+      _this._keepScrollToBottom = false;
       _this.state = {
         scrollDirection: 'backward',
         scrollOffset: typeof _this.props.initialScrollOffset === 'number' ? _this.props.initialScrollOffset : 0,
@@ -321,6 +322,11 @@ function createListComponent(_ref) {
 
         if (_scrollDirection !== prevScrollDirection || _scrollOffset !== prevScrollOffset || _scrollUpdateWasRequested !== prevScrollUpdateWasRequested) {
           this._callPropsCallbacks();
+        }
+
+        if (!prevState.scrolledToInitIndex) {
+          this._keepScrollPosition = false;
+          this._keepScrollToBottom = false;
         }
       }
 
@@ -955,14 +961,14 @@ createListComponent({
 
       var element = instance._outerRef;
 
-      if (instance.props.height + element.scrollTop >= instanceProps.totalMeasuredSize - 10) {
+      if (instance.props.height + element.scrollTop >= instanceProps.totalMeasuredSize - 10 || instance._keepScrollToBottom) {
         generateOffsetMeasurements(props, index, instanceProps);
         instance.scrollToItem(0, 'end');
         instance.forceUpdate();
         return;
       }
 
-      if (forceScrollCorrection) {
+      if (forceScrollCorrection || instance._keepScrollPosition) {
         var delta = newSize - oldSize;
 
         var _instance$_getRangeTo = instance._getRangeToRender(element.scrollTop),
@@ -1070,6 +1076,12 @@ createListComponent({
         instance.setState({
           scrolledToInitIndex: true
         });
+
+        if (_index === 0) {
+          instance._keepScrollToBottom = true;
+        } else {
+          instance._keepScrollPosition = true;
+        }
       }
     };
 
