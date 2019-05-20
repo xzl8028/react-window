@@ -126,8 +126,9 @@ export default function createListComponent({
     _instanceProps: any = initInstanceProps(this.props, this);
     _outerRef: ?HTMLDivElement;
     _scrollCorrectionInProgress = false;
-    _atBottom = true;
     _scrollByCorrection = null;
+    _keepScrollPosition = false;
+    _keepScrollToBottom = false;
     static defaultProps = {
       direction: 'vertical',
       innerTagName: 'div',
@@ -280,6 +281,10 @@ export default function createListComponent({
           scrollUpdateWasRequested !== prevScrollUpdateWasRequested
         ) {
           this._callPropsCallbacks();
+        }
+        if (!prevState.scrolledToInitIndex) {
+          this._keepScrollPosition = false;
+          this._keepScrollToBottom = false;
         }
       }
 
