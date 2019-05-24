@@ -274,7 +274,7 @@ const DynamicSizeList = createListComponent({
       if (forceScrollCorrection || instance._keepScrollPosition) {
         const delta = newSize - oldSize;
         const [, , visibleStartIndex] = instance._getRangeToRender(
-          element.scrollTop
+          instance.state.scrollOffset
         );
         generateOffsetMeasurements(props, index, instanceProps);
         if (index < visibleStartIndex + 1) {
