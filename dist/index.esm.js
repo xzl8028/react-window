@@ -971,7 +971,7 @@ createListComponent({
       if (forceScrollCorrection || instance._keepScrollPosition) {
         var delta = newSize - oldSize;
 
-        var _instance$_getRangeTo = instance._getRangeToRender(element.scrollTop),
+        var _instance$_getRangeTo = instance._getRangeToRender(instance.state.scrollOffset),
             visibleStartIndex = _instance$_getRangeTo[2];
 
         generateOffsetMeasurements(props, index, instanceProps);
