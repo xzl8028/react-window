@@ -11,7 +11,7 @@
 // similar to chrome and loads another set of posts.
 // chromimum seems to work fine so mostly in near future chrome fixes the issue
 
-export default function isBrowserChrome() {
+export function isBrowserChrome() {
   const isChromium = window.chrome;
   const winNav = window.navigator;
   const vendorName = winNav.vendor;
@@ -32,4 +32,11 @@ export default function isBrowserChrome() {
     return true;
   }
   return false;
+}
+
+export function isBrowserSafari() {
+  const userAgent = window.navigator.userAgent;
+  return (
+    userAgent.indexOf('Safari') !== -1 && userAgent.indexOf('Chrome') === -1
+  );
 }

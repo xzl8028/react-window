@@ -4,6 +4,9 @@ import { findDOMNode } from 'react-dom';
 
 import type { Direction } from './createListComponent';
 import type { HandleNewMeasurements } from './DynamicSizeList';
+import { isBrowserSafari } from './userAgent';
+
+const isSafari = isBrowserSafari();
 
 class DOMRectReadOnly {
   +x: number;
@@ -110,13 +113,20 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
   _resizeSensorExpand = React.createRef();
   _resizeSensorShrink = React.createRef();
   _positionScrollbarsRef = null;
+  _measureItemAnimFrame = null;
 
   componentDidMount() {
     const node = ((findDOMNode(this): any): HTMLElement);
     this._node = node;
     // Force sync measure for the initial mount.
     // This is necessary to support the DynamicSizeList layout logic.
-    this._measureItem(false);
+    if (isSafari && this.props.size) {
+      this._measureItemAnimFrame = window.requestAnimationFrame(() => {
+        this._measureItem(false);
+      });
+    } else {
+      this._measureItem(false);
+    }
 
     if (this.props.size) {
       // Don't wait for positioning scrollbars when we have size
@@ -164,6 +174,10 @@ export default class ItemMeasurer extends Component<ItemMeasurerProps, void> {
   componentWillUnmount() {
     if (this._positionScrollbarsRef) {
       window.cancelAnimationFrame(this._positionScrollbarsRef);
+    }
+
+    if (this._measureItemAnimFrame) {
+      window.cancelAnimationFrame(this._measureItemAnimFrame);
     }
 
     const { onUnmount, itemId, index } = this.props;

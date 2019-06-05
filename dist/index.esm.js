@@ -33,6 +33,10 @@ function isBrowserChrome() {
 
   return false;
 }
+function isBrowserSafari() {
+  var userAgent = window.navigator.userAgent;
+  return userAgent.indexOf('Safari') !== -1 && userAgent.indexOf('Chrome') === -1;
+}
 
 var isChrome =
 /*#__PURE__*/
@@ -552,6 +556,10 @@ var validateSharedProps = function validateSharedProps(_ref2) {
   }
 };
 
+var isSafari =
+/*#__PURE__*/
+isBrowserSafari();
+
 var scrollBarWidth = 8;
 var scrollableContainerStyles = {
   display: 'inline',
@@ -627,6 +635,7 @@ function (_Component) {
     _this._resizeSensorExpand = React.createRef();
     _this._resizeSensorShrink = React.createRef();
     _this._positionScrollbarsRef = null;
+    _this._measureItemAnimFrame = null;
 
     _this.positionScrollBars = function (height, width) {
       if (height === void 0) {
@@ -717,11 +726,19 @@ function (_Component) {
   var _proto = ItemMeasurer.prototype;
 
   _proto.componentDidMount = function componentDidMount() {
+    var _this2 = this;
+
     var node = findDOMNode(this);
     this._node = node; // Force sync measure for the initial mount.
     // This is necessary to support the DynamicSizeList layout logic.
 
-    this._measureItem(false);
+    if (isSafari && this.props.size) {
+      this._measureItemAnimFrame = window.requestAnimationFrame(function () {
+        _this2._measureItem(false);
+      });
+    } else {
+      this._measureItem(false);
+    }
 
     if (this.props.size) {
       // Don't wait for positioning scrollbars when we have size
@@ -747,6 +764,10 @@ function (_Component) {
   _proto.componentWillUnmount = function componentWillUnmount() {
     if (this._positionScrollbarsRef) {
       window.cancelAnimationFrame(this._positionScrollbarsRef);
+    }
+
+    if (this._measureItemAnimFrame) {
+      window.cancelAnimationFrame(this._measureItemAnimFrame);
     }
 
     var _this$props2 = this.props,
