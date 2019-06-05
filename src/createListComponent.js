@@ -2,7 +2,7 @@
 
 import memoizeOne from 'memoize-one';
 import { createElement, PureComponent } from 'react';
-import isBrowserChrome from './isChrome';
+import { isBrowserChrome } from './userAgent';
 
 const isChrome = isBrowserChrome();
 export type ScrollToAlign = 'auto' | 'center' | 'start' | 'end';
