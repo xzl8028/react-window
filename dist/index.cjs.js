@@ -260,10 +260,6 @@ function createListComponent(_ref) {
         };
       }, function () {
         if (isChrome && useAnimationFrame) {
-          if (_this2._scrollByCorrection) {
-            window.cancelAnimationFrame(_this2._scrollByCorrection);
-          }
-
           _this2._scrollByCorrection = window.requestAnimationFrame(_this2.scrollBy(_this2.state.scrollOffset, _this2.state.scrollByValue));
         } else {
           _this2.scrollBy(_this2.state.scrollOffset, _this2.state.scrollByValue)();
@@ -371,6 +367,10 @@ function createListComponent(_ref) {
 
     _proto.componentWillUnmount = function componentWillUnmount() {
       this._unmountHook();
+
+      if (this._scrollByCorrection) {
+        window.cancelAnimationFrame(this._scrollByCorrection);
+      }
     };
 
     _proto.render = function render() {

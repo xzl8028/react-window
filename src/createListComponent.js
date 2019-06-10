@@ -193,9 +193,6 @@ export default function createListComponent({
         }),
         () => {
           if (isChrome && useAnimationFrame) {
-            if (this._scrollByCorrection) {
-              window.cancelAnimationFrame(this._scrollByCorrection);
-            }
             this._scrollByCorrection = window.requestAnimationFrame(
               this.scrollBy(this.state.scrollOffset, this.state.scrollByValue)
             );
@@ -328,6 +325,9 @@ export default function createListComponent({
 
     componentWillUnmount() {
       this._unmountHook();
+      if (this._scrollByCorrection) {
+        window.cancelAnimationFrame(this._scrollByCorrection);
+      }
     }
 
     render() {
