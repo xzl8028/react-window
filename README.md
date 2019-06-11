@@ -35,3 +35,4 @@ If `react-window` provides the functionality your project needs, I would strongl
 ## License
 
 MIT © [bvaughn](https://github.com/bvaughn)
+Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved
