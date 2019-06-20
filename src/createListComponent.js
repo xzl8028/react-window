@@ -286,7 +286,7 @@ export default function createListComponent({
       }
 
       this._commitHook();
-      if (prevProps.itemData.length !== this.props.itemData.length) {
+      if (prevProps.itemData !== this.props.itemData) {
         this._dataChange();
       }
 
@@ -592,7 +592,8 @@ export default function createListComponent({
 
       while (
         !getItemSize(this.props, maxValue, this._instanceProps) &&
-        maxValue > 0
+        maxValue > 0 &&
+        this._instanceProps.totalMeasuredSize > this.props.height
       ) {
         maxValue--;
       }
