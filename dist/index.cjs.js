@@ -339,7 +339,7 @@ function createListComponent(_ref) {
 
       this._commitHook();
 
-      if (prevProps.itemData.length !== this.props.itemData.length) {
+      if (prevProps.itemData !== this.props.itemData) {
         this._dataChange();
       }
 
@@ -486,7 +486,7 @@ function createListComponent(_ref) {
       var minValue = Math.max(0, stopIndex - overscanBackward);
       var maxValue = Math.max(0, Math.min(itemCount - 1, startIndex + overscanForward));
 
-      while (!getItemSize(this.props, maxValue, this._instanceProps) && maxValue > 0) {
+      while (!getItemSize(this.props, maxValue, this._instanceProps) && maxValue > 0 && this._instanceProps.totalMeasuredSize > this.props.height) {
         maxValue--;
       }
 
