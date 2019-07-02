@@ -988,8 +988,9 @@ createListComponent({
       }
 
       var element = instance._outerRef;
+      var wasAtBottom = instance.props.height + element.scrollTop >= instanceProps.totalMeasuredSize - 10;
 
-      if (instance.props.height + element.scrollTop >= instanceProps.totalMeasuredSize - 10 || instance._keepScrollToBottom) {
+      if ((wasAtBottom || instance._keepScrollToBottom) && instance.props.correctScrollToBottom) {
         generateOffsetMeasurements(props, index, instanceProps);
         instance.scrollToItem(0, 'end');
         instance.forceUpdate();

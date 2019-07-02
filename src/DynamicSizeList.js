@@ -259,11 +259,13 @@ const DynamicSizeList = createListComponent({
       }
 
       const element = ((instance._outerRef: any): HTMLDivElement);
+      const wasAtBottom =
+        instance.props.height + element.scrollTop >=
+        instanceProps.totalMeasuredSize - 10;
 
       if (
-        instance.props.height + element.scrollTop >=
-          instanceProps.totalMeasuredSize - 10 ||
-        instance._keepScrollToBottom
+        (wasAtBottom || instance._keepScrollToBottom) &&
+        instance.props.correctScrollToBottom
       ) {
         generateOffsetMeasurements(props, index, instanceProps);
         instance.scrollToItem(0, 'end');
